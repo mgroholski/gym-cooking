@@ -52,37 +52,6 @@ class Recipe:
         self.actions.add(recipe.Deliver(self.full_plate_name))
 
     def add_merge_actions(self):
-        """
-        TODO
-
-        We'll want to figure out how to fix this. The merge action should take either
-        1. Cooked food and Merged Item
-        2. Chopped food and Merged Item
-
-        We'll need a better method than just look at the argument name since there's combinations
-        e.g. (Lettuce-MeatPatty)
-
-        We add a merge through
-        `self.actions.add()`
-
-        The Merge action has a init interface
-        `def __init__(self, arg1, arg2, pre=None, post_add=None)`
-
-        We can access the ingredient through self.contents.
-
-        We want to be able to merge any order
-        s.t. Merge(Tomato, Merge(Chopped(Lettuce), Plate)) = Lettuce-Tomato-Plate = Merge(Lettuce, Merge(Chopped(Tomato), Plate))
-
-        Link to original file:
-            https://github.com/mgroholski/gym-cooking/blob/529b4cada8392190bac4c7b60c6aaa7471875b87/gym_cooking/recipe_planner/recipe.py#L34
-        """
-        # should be general enough for any kind of salad / raw plated veggies
-
-        # alphabetical, joined by dashes ex. Ingredient1-Ingredient2-Plate
-        # self.full_name = '-'.join(sorted(self.contents + ['Plate']))
-
-        # for any plural number of ingredients
-
         for i in range(1, len(self.contents) + 1):
             for combo in combinations(self.contents, i):
                 for idx, new_item in enumerate(combo):
