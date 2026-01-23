@@ -149,6 +149,7 @@ def main_loop(arglist):
     print("Initializing environment and agents.")
     env = gym.envs.make("gym_cooking:overcookedEnv-v0", arglist=arglist)
     obs = env.reset()
+
     # game = GameVisualize(env)
     real_agents = initialize_agents(arglist=arglist)
 
