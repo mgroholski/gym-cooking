@@ -81,6 +81,10 @@ def interact(agent, world):
             # if in playable game mode, then chop raw items on cutting board
             if isinstance(gs, Cutboard) and obj.needs_chopped() and world.arglist.play:
                 obj.chop()
+            elif (
+                isinstance(gs, CookingPan) and obj.needs_cooked() and world.arglist.play
+            ):
+                obj.cook()
             else:
                 gs.release()
                 agent.acquire(obj)
