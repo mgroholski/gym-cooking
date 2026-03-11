@@ -226,9 +226,11 @@ class World:
     def is_occupied(self, location):
         o = list(
             filter(
-                lambda obj: obj.location == location
-                and isinstance(obj, Object)
-                and not (obj.is_held),
+                lambda obj: (
+                    obj.location == location
+                    and isinstance(obj, Object)
+                    and not (obj.is_held)
+                ),
                 self.get_object_list(),
             )
         )
@@ -343,19 +345,23 @@ class World:
         if desired_obj is None:
             objs = list(
                 filter(
-                    lambda obj: obj.location == location
-                    and isinstance(obj, Object)
-                    and obj.is_held is find_held_objects,
+                    lambda obj: (
+                        obj.location == location
+                        and isinstance(obj, Object)
+                        and obj.is_held is find_held_objects
+                    ),
                     all_objs,
                 )
             )
         else:
             objs = list(
                 filter(
-                    lambda obj: obj.name == desired_obj.name
-                    and obj.location == location
-                    and isinstance(obj, Object)
-                    and obj.is_held is find_held_objects,
+                    lambda obj: (
+                        obj.name == desired_obj.name
+                        and obj.location == location
+                        and isinstance(obj, Object)
+                        and obj.is_held is find_held_objects
+                    ),
                     all_objs,
                 )
             )
@@ -364,6 +370,11 @@ class World:
             desired_obj, ",".join(o.get_name() for o in objs), location
         )
 
+        gs = self.get_gridsquare_at(location)
+        if gs.is_dispenser:
+            obj_copy = copy.deepcopy(objs[0])
+            self.insert(obj_copy)
+            return obj_copy
         return objs[0]
 
     def get_gridsquare_at(self, location):

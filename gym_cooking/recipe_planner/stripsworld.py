@@ -33,7 +33,6 @@ class STRIPSWorld:
         all_actions = recipe.actions  # set
         goal_state = None
 
-        # breakpoint()
         new_preds = set()
         graph = nx.DiGraph()
         graph.add_node(self.initial, obj=self.initial)

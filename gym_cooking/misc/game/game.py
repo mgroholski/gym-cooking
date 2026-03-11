@@ -94,6 +94,9 @@ class Game:
             pygame.draw.rect(self.screen, Color.DELIVERY, fill)
             self.draw("delivery", self.tile_size, sl)
 
+        elif isinstance(gs, Trash):
+            pygame.draw.rect(self.screen, Color.BLACK, fill)
+
         elif isinstance(gs, Cutboard):
             pygame.draw.rect(self.screen, Color.COUNTER, fill)
             pygame.draw.rect(self.screen, Color.COUNTER_BORDER, fill, 1)
@@ -103,6 +106,9 @@ class Game:
             pygame.draw.rect(self.screen, Color.COUNTER, fill)
             pygame.draw.rect(self.screen, Color.COUNTER_BORDER, fill, 1)
             self.draw("cookingpan", self.tile_size, sl)
+
+        if gs.is_dispenser:
+            pygame.draw.rect(self.screen, Color.DISPENSER, fill)
 
         return
 

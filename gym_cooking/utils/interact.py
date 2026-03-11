@@ -27,9 +27,17 @@ def interact(agent, world):
         if isinstance(gs, Delivery):
             obj = agent.holding
             if obj.is_deliverable():
+                # TODO: Edit order queue
+
                 gs.acquire(obj)
                 agent.release()
                 print("\nDelivered {}!".format(obj.full_name))
+
+        elif isinstance(gs, Trash):
+            obj = agent.holding
+            agent.release()
+            world.remove(obj)
+            gs.acquire(obj)
 
         # if occupied gridsquare in front --> try merging
         elif world.is_occupied(gs.location):
@@ -47,7 +55,7 @@ def interact(agent, world):
                     gs.acquire(agent.holding)
                     agent.release()
 
-        # if holding something, empty gridsquare in front --> chop or drop
+        # if holding something, empty gridsquare in front --> chop, cook, or drop
         elif not world.is_occupied(gs.location):
             obj = agent.holding
             if (
@@ -87,6 +95,7 @@ def interact(agent, world):
                 obj.cook()
             else:
                 gs.release()
+
                 agent.acquire(obj)
 
         # if empty in front --> interact

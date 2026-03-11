@@ -101,13 +101,15 @@ class OvercookedEnvironment(gym.Env):
                 # Phase 1: Read in kitchen map.
                 elif phase == 1:
                     for x, rep in enumerate(line):
-                        # Object, i.e. Tomato, Lettuce, Onion, or Plate.
+                        # Object, i.e. Tomato, Lettuce, Onion, Plate. Potato, MeatPatty.
                         if rep in "tlopPM":
                             counter = Counter(location=(x, y))
                             obj = Object(location=(x, y), contents=RepToClass[rep]())
                             counter.acquire(obj=obj)
                             self.world.insert(obj=counter)
                             self.world.insert(obj=obj)
+                            counter.is_dispenser = True
+
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
@@ -296,8 +298,9 @@ class OvercookedEnvironment(gym.Env):
                     lambda a: a.location,
                     list(
                         filter(
-                            lambda a: a.name in subtask_agent_names
-                            and a.holding == start_obj,
+                            lambda a: (
+                                a.name in subtask_agent_names and a.holding == start_obj
+                            ),
                             self.sim_agents,
                         )
                     ),
@@ -319,8 +322,9 @@ class OvercookedEnvironment(gym.Env):
                     lambda a: a.location,
                     list(
                         filter(
-                            lambda a: a.name in subtask_agent_names
-                            and a.holding == start_obj,
+                            lambda a: (
+                                a.name in subtask_agent_names and a.holding == start_obj
+                            ),
                             self.sim_agents,
                         )
                     ),
@@ -336,8 +340,10 @@ class OvercookedEnvironment(gym.Env):
                     lambda a: a.location,
                     list(
                         filter(
-                            lambda a: a.name in subtask_agent_names
-                            and a.holding == start_obj[0],
+                            lambda a: (
+                                a.name in subtask_agent_names
+                                and a.holding == start_obj[0]
+                            ),
                             self.sim_agents,
                         )
                     ),
@@ -348,8 +354,10 @@ class OvercookedEnvironment(gym.Env):
                     lambda a: a.location,
                     list(
                         filter(
-                            lambda a: a.name in subtask_agent_names
-                            and a.holding == start_obj[1],
+                            lambda a: (
+                                a.name in subtask_agent_names
+                                and a.holding == start_obj[1]
+                            ),
                             self.sim_agents,
                         )
                     ),
