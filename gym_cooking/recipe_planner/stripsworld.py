@@ -7,6 +7,15 @@ import recipe_planner.utils as recipe
 # core modules
 from utils.core import Object
 
+OBJ_NAMES = [
+    "Plate",
+    "Tomato",
+    "Lettuce",
+    "Onion",
+    "MeatPatty",
+    "Potato",
+]
+
 
 class STRIPSWorld:
     def __init__(self, world, recipes):
@@ -17,15 +26,7 @@ class STRIPSWorld:
         self.initial.add_predicate(recipe.NoPredicate())
         for obj in world.get_object_list():
             if isinstance(obj, Object):
-                # TODO: If we're going to add more objects we should get rid of this hardcoded.
-                for obj_name in [
-                    "Plate",
-                    "Tomato",
-                    "Lettuce",
-                    "Onion",
-                    "MeatPatty",
-                    "Potato",
-                ]:
+                for obj_name in OBJ_NAMES:
                     if obj.contains(obj_name):
                         self.initial.add_predicate(recipe.Fresh(obj_name))
 
@@ -70,8 +71,11 @@ class STRIPSWorld:
     def get_subtasks(self, max_path_length=10, draw_graph=False):
         action_paths = []
 
-        for recipe in self.recipes:
-            graph, goal_state = self.generate_graph(recipe, max_path_length)
+        # trash_actions = set()
+
+        # Adds trash actions for all object names.
+        for recipe_obj in self.recipes:
+            graph, goal_state = self.generate_graph(recipe_obj, max_path_length)
 
             if draw_graph:  # not recommended for path length > 4
                 nx.draw(graph, with_labels=True)
@@ -87,9 +91,19 @@ class STRIPSWorld:
                 ]
                 union_action_path = union_action_path | set(action_path)
 
+            produced_objs = set()
+            for action in union_action_path:
+                for predicate in action.post_add:
+                    if predicate.name in {"Fresh", "Chopped", "Cooked", "Merged"}:
+                        produced_objs.add(predicate.args[0])
+
+            for obj in produced_objs:
+                union_action_path.add(recipe.Trash(obj))
+
             # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
             action_paths.append(union_action_path)
 
+        # breakpoint()
         return action_paths
 
     def check_goal(self, recipe, state):

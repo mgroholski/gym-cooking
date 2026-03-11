@@ -310,6 +310,27 @@ class OvercookedEnvironment(gym.Env):
             # B: Cutboard objects.
             B_locs = self.world.get_all_object_locs(obj=subtask_action_obj)
 
+        # For Merge operator on Cook subtasks, we look at objects that can be
+        # cooked and the cooking objects.
+        elif isinstance(subtask, recipe.Cook):
+            # A: Object that can be chopped.
+            A_locs = self.world.get_object_locs(obj=start_obj, is_held=False) + list(
+                map(
+                    lambda a: a.location,
+                    list(
+                        filter(
+                            lambda a: (
+                                a.name in subtask_agent_names and a.holding == start_obj
+                            ),
+                            self.sim_agents,
+                        )
+                    ),
+                )
+            )
+
+            # B: Cook objects.
+            B_locs = self.world.get_all_object_locs(obj=subtask_action_obj)
+
         # For Merge operator on Deliver subtasks, we look at objects that can be
         # delivered and the Delivery object.
         elif isinstance(subtask, recipe.Deliver):

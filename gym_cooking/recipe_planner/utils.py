@@ -61,6 +61,11 @@ class Merged(Predicate):
         Predicate.__init__(self, "Merged", (obj,))
 
 
+class Trashed(Predicate):
+    def __init__(self, obj):
+        Predicate.__init__(self, "Trashed", (obj,))
+
+
 # ACTIONS
 # -------------------------------------------------------------
 class Action:
@@ -81,9 +86,19 @@ class Action:
 
     def set_specs(self):
         self.specs = "\n{}({})\n".format(self.name, ", ".join(self.args))
-        self.specs += "Preconditions: {}\n".format(
-            ", ".join([str(_) for _ in self.pre])
-        )
+        pre_groups = self._get_pre_groups()
+        if pre_groups:
+            pre_str = " AND ".join(
+                [
+                    "(" + " OR ".join([str(p) for p in group]) + ")"
+                    if len(group) > 1
+                    else str(group[0])
+                    for group in pre_groups
+                ]
+            )
+        else:
+            pre_str = ""
+        self.specs += "Preconditions: {}\n".format(pre_str)
         post = ", ".join(
             [str(_) for _ in self.post_add]
         )  # + ', !'.join([''] + [str(_) for _ in self.post_delete])
@@ -97,19 +112,36 @@ class Action:
     def __hash__(self):
         return hash((self.name, self.args))
 
+    def _get_pre_groups(self):
+        if self.pre is None:
+            return []
+        has_groups = any(isinstance(p, (list, tuple, set)) for p in self.pre)
+        if has_groups:
+            groups = []
+            for item in self.pre:
+                if isinstance(item, (list, tuple, set)):
+                    groups.append(list(item))
+                else:
+                    groups.append([item])
+            return groups
+        return [list(self.pre)]
+
+    def iter_preconditions(self):
+        return [p for group in self._get_pre_groups() for p in group]
+
     def is_valid_in(self, state):
-        temp_state = copy.copy(state)
-        for pre in self.pre:
-            try:
-                temp_state.delete_predicate(pre)
-            except:
-                return False
-        return True
+        pre_groups = self._get_pre_groups()
+        if not pre_groups:
+            return True
+        return all(any(state.contains(p) for p in group) for group in pre_groups)
 
     def get_next_from(self, state):
         next_state = copy.copy(state)
-        for predicate in self.pre:
-            next_state.delete_predicate(predicate)  # remove first instance
+        for group in self._get_pre_groups():
+            for predicate in group:
+                if next_state.contains(predicate):
+                    next_state.delete_predicate(predicate)  # remove first instance
+                    break
         for predicate in self.post_add:
             next_state.add_predicate(predicate)
         return next_state
@@ -179,8 +211,7 @@ class Merge(Action):
         # self.args = tuple(sorted([arg1, arg2]))
         # sorted because it doesn't matter order of merging
 
-        self.pre_default = [Chopped(arg1), Merged(arg2)]
-        # self.pre_default = [Cooked(arg1), Merged(arg2)]
+        self.pre_default = [[Chopped(arg1), Cooked(arg1)], [Merged(arg2)]]
         self.post_add_default = [
             Merged("-".join(sorted(arg1.split("-") + arg2.split("-"))))
         ]
@@ -201,6 +232,21 @@ class Deliver(Action):
         self.pre_default = [Merged(obj)]
         self.post_add_default = [Delivered(obj)]
         Action.__init__(self, "Deliver", pre, post_add)
+
+
+"""
+Trash(X)
+Pre: Fresh(X), Chopped(obj), Cooked(obj), Merged(obj)
+Post: Trashed(X)
+"""
+
+
+class Trash(Action):
+    def __init__(self, obj, pre=None, post_add=None):
+        self.args = (obj,)
+        self.pre_default = [Cooked(obj), Chopped(obj), Fresh(obj), Merged(obj)]
+        self.post_add_default = [Trashed(obj)]
+        Action.__init__(self, "Trash", pre, post_add)
 
 
 # STRIPSSTATE
@@ -263,7 +309,7 @@ def make_predicate_graph(initial, action_path, draw=True):
         for post_add in action.post_add:
             g.add_node(post_add)  # , label=str(post_add))
             node_labels[post_add] = str(post_add)
-            for pre in action.pre:
+            for pre in action.iter_preconditions():
                 # prevent self loops on pots and None
                 if (pre != post_add) and (post_add != Fresh("Pot")):
                     g.add_edge(pre, post_add)  # , label=action['str_name'])
@@ -290,7 +336,7 @@ def make_action_graph(initial, action_path, draw=True):
         # search for nodes whose postconditions match this nodes preconditions
         for other_action in g:  # other_action is a node
             for p in other_action.post_add:
-                if p in action.pre and p != NoPredicate():
+                if p in action.iter_preconditions() and p != NoPredicate():
                     g.add_edge(other_action, action, obj=p)
                     edge_labels[(other_action, action)] = str(p)
     action_graph = make_graph(g, node_labels, edge_labels, draw)
@@ -325,10 +371,7 @@ def get_layers(recipe_tasks, initial):
     for t in recipe_tasks:
         if t.is_valid_in(initial):
             free_tasks.append(t)
-            for pre in t.pre:
-                next_initial.delete_predicate(pre)
-            for post in t.post_add:
-                next_initial.add_predicate(post)
+            next_initial = t.get_next_from(next_initial)
         else:
             remaining_tasks.append(t)
 

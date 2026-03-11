@@ -262,7 +262,7 @@ class Object:
             return False
         return self.contents[0].needs_cooked()
 
-    def is_chopped(self):
+    def is_cooked(self):
         for c in self.contents:
             if isinstance(c, Plate) or c.get_state() != "Cooked":
                 return False
