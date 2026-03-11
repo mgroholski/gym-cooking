@@ -8,6 +8,7 @@ class Color:
     COUNTER_BORDER = (114, 93, 51)  # darker tan
     DELIVERY = (96, 96, 96)  # grey
     DISPENSER = (135, 103, 64)
+    WHITE = (255, 255, 255)
 
 
 KeyToTuple = {

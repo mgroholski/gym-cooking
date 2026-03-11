@@ -6,7 +6,6 @@ t    -    P
 p    -    -
 ------M----
 
-Burger
 Salad
 
 2 1

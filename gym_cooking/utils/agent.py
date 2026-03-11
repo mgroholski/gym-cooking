@@ -100,9 +100,16 @@ class RealAgent:
         self.plan(copy.copy(obs))
         return self.action
 
-    def get_subtasks(self, world):
-        """Return different subtask permutations for recipes."""
-        self.sw = STRIPSWorld(world, self.recipes)
+    def get_subtasks(self, env):
+        """Return different subtask permutations for active orders."""
+        active_orders = list(getattr(env.world, "order_queue", []))
+        if active_orders:
+            active_set = set(active_orders)
+            recipes = [r for r in self.recipes if r.full_plate_name in active_set]
+        else:
+            return []
+
+        self.sw = STRIPSWorld(env.world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
         subtasks = self.sw.get_subtasks(max_path_length=self.arglist.max_num_subtasks)
         all_subtasks = [subtask for path in subtasks for subtask in path]
@@ -115,7 +122,8 @@ class RealAgent:
 
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
-        self.incomplete_subtasks = self.get_subtasks(world=env.world)
+        self.incomplete_subtasks = self.get_subtasks(env=env)
+        self.last_order_queue = list(getattr(env.world, "order_queue", []))
         self.delegator = BayesianDelegator(
             agent_name=self.name,
             all_agent_names=env.get_agent_names(),
@@ -160,6 +168,13 @@ class RealAgent:
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
+        current_queue = list(getattr(env.world, "order_queue", []))
+        if (not hasattr(self, "last_order_queue")) or (
+            current_queue != self.last_order_queue
+        ):
+            self.last_order_queue = copy.copy(current_queue)
+            self.incomplete_subtasks = self.get_subtasks(env=env)
+
         if (
             self.subtask is not None and self.subtask not in self.incomplete_subtasks
         ) or (

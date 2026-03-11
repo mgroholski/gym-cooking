@@ -39,6 +39,12 @@ def parse_arguments():
         default=False,
         help="Return observations as images (instead of objects)",
     )
+    parser.add_argument(
+        "--order-queue-size",
+        type=int,
+        default=1,
+        help="Number of orders to place in the queue at reset",
+    )
 
     # Delegation Planner
     parser.add_argument(

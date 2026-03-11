@@ -43,6 +43,9 @@ class OvercookedEnvironment(gym.Env):
         self.collisions = []
         self.termination_info = ""
         self.successful = False
+        self.order_queue = []
+        self.delivered_orders = []
+        self._delivery_holding_count = 0
 
     def get_repr(self):
         return self.world.get_repr() + tuple(
@@ -63,6 +66,9 @@ class OvercookedEnvironment(gym.Env):
         new_env.world = copy.copy(self.world)
         new_env.sim_agents = [copy.copy(a) for a in self.sim_agents]
         new_env.distances = self.distances
+        new_env.order_queue = copy.deepcopy(self.order_queue)
+        new_env.delivered_orders = copy.deepcopy(self.delivered_orders)
+        new_env._delivery_holding_count = self._delivery_holding_count
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -155,10 +161,14 @@ class OvercookedEnvironment(gym.Env):
         self.collisions = []
         self.termination_info = ""
         self.successful = False
+        self.order_queue = []
+        self.delivered_orders = []
+        self._delivery_holding_count = 0
 
         # Load world & distances.
         self.load_level(level=self.arglist.level, num_agents=self.arglist.num_agents)
         self.all_subtasks = self.run_recipes()
+        self.initialize_order_queue()
         self.world.make_loc_to_gridsquare()
         self.world.make_reachability_graph()
         self.cache_distances()
@@ -197,6 +207,7 @@ class OvercookedEnvironment(gym.Env):
 
         # Execute.
         self.execute_navigation()
+        self.update_order_queue_from_delivery()
 
         # Visualize.
         self.display()
@@ -229,26 +240,13 @@ class OvercookedEnvironment(gym.Env):
             self.successful = False
             return True
 
-        assert any(
-            [isinstance(subtask, recipe.Deliver) for subtask in self.all_subtasks]
-        ), "no delivery subtask"
+        # Done if all orders in the queue have been delivered.
+        if self.order_queue:
+            self.termination_info = ""
+            self.successful = False
+            return False
 
-        # Done if subtask is completed.
-        for subtask in self.all_subtasks:
-            # Double check all goal_objs are at Delivery.
-            if isinstance(subtask, recipe.Deliver):
-                _, goal_obj = nav_utils.get_subtask_obj(subtask)
-
-                delivery_loc = list(
-                    filter(lambda o: o.name == "Delivery", self.world.get_object_list())
-                )[0].location
-                goal_obj_locs = self.world.get_all_object_locs(obj=goal_obj)
-                if not any([gol == delivery_loc for gol in goal_obj_locs]):
-                    self.termination_info = ""
-                    self.successful = False
-                    return False
-
-        self.termination_info = "Terminating because all deliveries were completed"
+        self.termination_info = "Terminating because all orders were delivered"
         self.successful = True
         return True
 
@@ -280,6 +278,46 @@ class OvercookedEnvironment(gym.Env):
         all_subtasks = [subtask for path in subtasks for subtask in path]
         print("Subtasks:", all_subtasks, "\n")
         return all_subtasks
+
+    def initialize_order_queue(self):
+        self.order_queue_size = int(getattr(self.arglist, "order_queue_size", 1))
+        if self.order_queue_size <= 0 or not self.recipes:
+            self.order_queue = []
+        else:
+            recipe_indices = np.random.choice(
+                len(self.recipes), size=self.order_queue_size, replace=True
+            )
+            self.order_queue = [self.recipes[i].full_state_name for i in recipe_indices]
+        self.delivered_orders = []
+        self._delivery_holding_count = 0
+        self.world.order_queue = copy.deepcopy(self.order_queue)
+        self.world.delivered_orders = copy.deepcopy(self.delivered_orders)
+
+    def update_order_queue_from_delivery(self):
+        delivery_squares = list(
+            filter(lambda o: o.name == "Delivery", self.world.get_object_list())
+        )
+        if not delivery_squares:
+            return
+        delivery = delivery_squares[0]
+        if not hasattr(delivery, "holding"):
+            return
+        delivered_objects = delivery.holding
+        if len(delivered_objects) <= self._delivery_holding_count:
+            return
+        new_objects = delivered_objects[self._delivery_holding_count :]
+        self._delivery_holding_count = len(delivered_objects)
+
+        for obj in new_objects:
+            if not obj.is_deliverable():
+                continue
+            order_name = "-".join(sorted([c.name for c in obj.contents]))
+            if order_name in self.order_queue:
+                completed = self.order_queue.pop(self.order_queue.index(order_name))
+                self.delivered_orders.append(completed)
+
+        self.world.order_queue = copy.deepcopy(self.order_queue)
+        self.world.delivered_orders = copy.deepcopy(self.delivered_orders)
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj

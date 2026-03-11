@@ -32,7 +32,7 @@ class Game:
         self.holding_scale = 0.5
         self.container_scale = 0.7
         self.width = self.scale * self.world.width
-        self.height = self.scale * self.world.height
+        self.height = self.scale * self.world.height + self.scale
         self.tile_size = (self.scale, self.scale)
         self.holding_size = tuple(
             (self.holding_scale * np.asarray(self.tile_size)).astype(int)
@@ -78,9 +78,22 @@ class Game:
         for agent in self.sim_agents:
             self.draw_agent(agent)
 
+        self.draw_order_queue(self.scale * self.world.height, 0)
+
         if self.play:
             pygame.display.flip()
             pygame.display.update()
+
+    def draw_order_queue(self, order_row_y, x_offset=0):
+        order_queue = list(getattr(self.world, "order_queue", []))
+        for idx, order_name in enumerate(order_queue):
+            order_x = idx * self.scale + x_offset
+            order_location = (order_x, order_row_y)
+            fill = pygame.Rect(order_x, order_row_y, self.scale, self.scale)
+            pygame.draw.rect(self.screen, Color.WHITE, fill)
+            pygame.draw.rect(self.screen, Color.COUNTER_BORDER, fill, 1)
+
+            self.draw(order_name, self.tile_size, order_location)
 
     def draw_gridsquare(self, gs):
         sl = self.scaled_location(gs.location)

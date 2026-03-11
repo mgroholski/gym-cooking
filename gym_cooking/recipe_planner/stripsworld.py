@@ -1,5 +1,7 @@
 import copy
 
+import matplotlib.pyplot as plt
+
 # helpers
 import networkx as nx
 import recipe_planner.utils as recipe
@@ -53,6 +55,7 @@ class STRIPSWorld:
 
                         # as soon as goal is found, break and return
                         if self.check_goal(recipe, next_state) and goal_state is None:
+                            breakpoint()
                             goal_state = next_state
                             return graph, goal_state
 
@@ -71,9 +74,6 @@ class STRIPSWorld:
     def get_subtasks(self, max_path_length=10, draw_graph=False):
         action_paths = []
 
-        # trash_actions = set()
-
-        # Adds trash actions for all object names.
         for recipe_obj in self.recipes:
             graph, goal_state = self.generate_graph(recipe_obj, max_path_length)
 
@@ -103,7 +103,6 @@ class STRIPSWorld:
             # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
             action_paths.append(union_action_path)
 
-        # breakpoint()
         return action_paths
 
     def check_goal(self, recipe, state):

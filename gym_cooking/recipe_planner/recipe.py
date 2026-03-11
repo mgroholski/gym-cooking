@@ -45,6 +45,9 @@ class Recipe:
         )  # list of Food objects
         self.contents_names = [c.name for c in self.contents]  # list of strings
         self.full_name = "-".join(sorted(self.contents_names))  # string
+        self.full_state_name = "-".join(
+            sorted([c.full_name for c in self.contents])
+        )  # string
         self.full_plate_name = "-".join(
             sorted(self.contents_names + ["Plate"])
         )  # string

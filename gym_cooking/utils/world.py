@@ -20,6 +20,8 @@ class World:
         self.rep = []  # [row0, row1, ..., rown]
         self.arglist = arglist
         self.objects = defaultdict(lambda: [])
+        self.order_queue = []
+        self.delivered_orders = []
 
     def get_repr(self):
         return self.get_dynamic_objects()
@@ -32,6 +34,8 @@ class World:
         new = World(self.arglist)
         new.__dict__ = self.__dict__.copy()
         new.objects = copy.deepcopy(self.objects)
+        new.order_queue = copy.deepcopy(self.order_queue)
+        new.delivered_orders = copy.deepcopy(self.delivered_orders)
         new.reachability_graph = self.reachability_graph
         new.distances = self.distances
         return new

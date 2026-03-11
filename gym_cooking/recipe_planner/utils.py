@@ -144,6 +144,7 @@ class Action:
                     break
         for predicate in self.post_add:
             next_state.add_predicate(predicate)
+
         return next_state
 
 
@@ -158,7 +159,7 @@ class Get(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)  # ('Tomato')
 
-        self.pre_default = [NoPredicate()]
+        self.pre_default = [[NoPredicate()]]
         self.post_add_default = [Fresh(obj), NoPredicate()]
 
         Action.__init__(self, "Get", pre, post_add)
@@ -175,7 +176,7 @@ class Chop(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
 
-        self.pre_default = [Fresh(obj)]
+        self.pre_default = [[Fresh(obj)]]
         self.post_add_default = [Chopped(obj)]
 
         Action.__init__(self, "Chop", pre, post_add)
@@ -192,7 +193,7 @@ class Cook(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
 
-        self.pre_default = [Fresh(obj)]
+        self.pre_default = [[Fresh(obj)]]
         self.post_add_default = [Cooked(obj)]
 
         Action.__init__(self, "Cook", pre, post_add)
@@ -229,7 +230,7 @@ Post: Delivered(X), !Plated(X)
 class Deliver(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
-        self.pre_default = [Merged(obj)]
+        self.pre_default = [[Merged(obj)]]
         self.post_add_default = [Delivered(obj)]
         Action.__init__(self, "Deliver", pre, post_add)
 
@@ -244,7 +245,7 @@ Post: Trashed(X)
 class Trash(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
-        self.pre_default = [Cooked(obj), Chopped(obj), Fresh(obj), Merged(obj)]
+        self.pre_default = [NoPredicate()]
         self.post_add_default = [Trashed(obj)]
         Action.__init__(self, "Trash", pre, post_add)
 
