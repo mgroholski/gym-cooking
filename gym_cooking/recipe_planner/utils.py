@@ -133,17 +133,18 @@ class Action:
         pre_groups = self._get_pre_groups()
         if not pre_groups:
             return True
-        return all(any(state.contains(p) for p in group) for group in pre_groups)
+        return any(all(state.contains(p) for p in group) for group in pre_groups)
 
     def get_next_from(self, state):
         next_state = copy.copy(state)
         for group in self._get_pre_groups():
-            for predicate in group:
-                if next_state.contains(predicate):
+            if all(state.contains(p) for p in group):
+                for predicate in group:
                     next_state.delete_predicate(predicate)  # remove first instance
-                    break
-        for predicate in self.post_add:
-            next_state.add_predicate(predicate)
+
+                for predicate in self.post_add:
+                    next_state.add_predicate(predicate)
+                break
 
         return next_state
 

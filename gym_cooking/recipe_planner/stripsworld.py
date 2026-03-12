@@ -45,17 +45,16 @@ class STRIPSWorld:
             # print("CHECKING FRONTIER #:", i)
             for state in frontier:
                 # for each action, check whether from this state
-                for a in all_actions:
-                    if a.is_valid_in(state):
-                        next_state = a.get_next_from(state)
+                for action in all_actions:
+                    if action.is_valid_in(state):
+                        next_state = action.get_next_from(state)
                         for p in next_state.predicates:
                             new_preds.add(str(p))
                         graph.add_node(next_state, obj=next_state)
-                        graph.add_edge(state, next_state, obj=a)
+                        graph.add_edge(state, next_state, obj=action)
 
                         # as soon as goal is found, break and return
                         if self.check_goal(recipe, next_state) and goal_state is None:
-                            breakpoint()
                             goal_state = next_state
                             return graph, goal_state
 
@@ -72,7 +71,7 @@ class STRIPSWorld:
         return graph, goal_state
 
     def get_subtasks(self, max_path_length=10, draw_graph=False):
-        action_paths = []
+        action_paths_dict = {}
 
         for recipe_obj in self.recipes:
             graph, goal_state = self.generate_graph(recipe_obj, max_path_length)
@@ -91,19 +90,10 @@ class STRIPSWorld:
                 ]
                 union_action_path = union_action_path | set(action_path)
 
-            produced_objs = set()
-            for action in union_action_path:
-                for predicate in action.post_add:
-                    if predicate.name in {"Fresh", "Chopped", "Cooked", "Merged"}:
-                        produced_objs.add(predicate.args[0])
-
-            for obj in produced_objs:
-                union_action_path.add(recipe.Trash(obj))
-
             # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
-            action_paths.append(union_action_path)
+            action_paths_dict[recipe_obj.name] = union_action_path
 
-        return action_paths
+        return action_paths_dict
 
     def check_goal(self, recipe, state):
         # check if this state satisfies completion of this recipe

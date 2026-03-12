@@ -27,10 +27,10 @@ def interact(agent, world):
         if isinstance(gs, Delivery):
             obj = agent.holding
             if obj.is_deliverable():
-                # TODO: Edit order queue
-
-                gs.acquire(obj)
+                world.process_delivery(obj)
                 agent.release()
+                gs.acquire(obj)
+                world.remove(obj)
                 print("\nDelivered {}!".format(obj.full_name))
 
         elif isinstance(gs, Trash):

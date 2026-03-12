@@ -21,7 +21,7 @@ class World:
         self.arglist = arglist
         self.objects = defaultdict(lambda: [])
         self.order_queue = []
-        self.delivered_orders = []
+        self.delivered_dishes = []
 
     def get_repr(self):
         return self.get_dynamic_objects()
@@ -35,7 +35,7 @@ class World:
         new.__dict__ = self.__dict__.copy()
         new.objects = copy.deepcopy(self.objects)
         new.order_queue = copy.deepcopy(self.order_queue)
-        new.delivered_orders = copy.deepcopy(self.delivered_orders)
+        new.delivered_dishes = copy.deepcopy(self.delivered_dishes)
         new.reachability_graph = self.reachability_graph
         new.distances = self.distances
         return new
@@ -312,6 +312,26 @@ class World:
                 list(filter(lambda o: o.collidable, self.get_object_list())),
             )
         )
+
+    def process_delivery(self, obj):
+        self.delivered_dishes.append(obj.full_name)
+
+        if self.arglist.play:
+            # A copy of update_order_queue() from overcooked_environment.py
+            matching_order_idx = next(
+                (
+                    idx
+                    for idx, order in enumerate(self.order_queue)
+                    if order.full_state_plate_name == obj.full_name
+                ),
+                -1,
+            )
+
+            if matching_order_idx >= 0:
+                removed_dish = self.order_queue.pop(matching_order_idx)
+                print(
+                    f"Delivered {obj.full_name} which was {matching_order_idx}: {removed_dish.full_state_plate_name}."
+                )
 
     def get_object_locs(self, obj, is_held):
         if obj.name not in self.objects.keys():

@@ -141,7 +141,7 @@ class Delivery(GridSquare):
 
     def acquire(self, obj):
         obj.location = self.location
-        self.holding.append(obj)
+        del obj
 
     def release(self):
         if self.holding:
@@ -515,6 +515,9 @@ class Plate:
         return Plate()
 
     def needs_chopped(self):
+        return False
+
+    def needs_cooked(self):
         return False
 
 

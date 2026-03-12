@@ -45,12 +45,24 @@ class Recipe:
         )  # list of Food objects
         self.contents_names = [c.name for c in self.contents]  # list of strings
         self.full_name = "-".join(sorted(self.contents_names))  # string
-        self.full_state_name = "-".join(
-            sorted([c.full_name for c in self.contents])
-        )  # string
         self.full_plate_name = "-".join(
             sorted(self.contents_names + ["Plate"])
         )  # string
+
+        self.state_contents_names = [(c.full_name, c.name) for c in self.contents]
+        self.full_state_name = "-".join(
+            [c[0] for c in sorted(self.state_contents_names, key=lambda c: c[1])]
+        )  # string
+
+        self.full_state_plate_name = "-".join(
+            [
+                c[0]
+                for c in sorted(
+                    self.state_contents_names + [("Plate", "Plate")], key=lambda c: c[1]
+                )
+            ]
+        )  # string
+
         self.goal = recipe.Delivered(self.full_plate_name)
         self.actions.add(recipe.Deliver(self.full_plate_name))
 

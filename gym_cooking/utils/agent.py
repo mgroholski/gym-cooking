@@ -93,6 +93,7 @@ class RealAgent:
             self.setup_subtasks(env=obs)
 
         # Select subtask based on Bayesian Delegation.
+
         self.update_subtasks(env=obs)
         self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
             agent_name=self.name
@@ -102,17 +103,25 @@ class RealAgent:
 
     def get_subtasks(self, env):
         """Return different subtask permutations for active orders."""
+
         active_orders = list(getattr(env.world, "order_queue", []))
+
         if active_orders:
-            active_set = set(active_orders)
-            recipes = [r for r in self.recipes if r.full_plate_name in active_set]
+            recipes = list(set(active_orders))
         else:
             return []
 
         self.sw = STRIPSWorld(env.world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
-        subtasks = self.sw.get_subtasks(max_path_length=self.arglist.max_num_subtasks)
-        all_subtasks = [subtask for path in subtasks for subtask in path]
+        subtasks_by_recipe = self.sw.get_subtasks(
+            max_path_length=self.arglist.max_num_subtasks
+        )
+
+        all_subtasks = [
+            subtask
+            for order in active_orders
+            for subtask in subtasks_by_recipe[order.name]
+        ]
 
         # Uncomment below to view graph for recipe path i
         # i = 0
@@ -123,7 +132,6 @@ class RealAgent:
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
         self.incomplete_subtasks = self.get_subtasks(env=env)
-        self.last_order_queue = list(getattr(env.world, "order_queue", []))
         self.delegator = BayesianDelegator(
             agent_name=self.name,
             all_agent_names=env.get_agent_names(),
@@ -168,13 +176,8 @@ class RealAgent:
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
-        current_queue = list(getattr(env.world, "order_queue", []))
-        if (not hasattr(self, "last_order_queue")) or (
-            current_queue != self.last_order_queue
-        ):
-            self.last_order_queue = copy.copy(current_queue)
-            self.incomplete_subtasks = self.get_subtasks(env=env)
 
+        # If subtask is not none and subtask is complete
         if (
             self.subtask is not None and self.subtask not in self.incomplete_subtasks
         ) or (
