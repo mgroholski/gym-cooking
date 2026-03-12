@@ -120,7 +120,7 @@ def fix_seed(seed):
     random.seed(seed)
 
 
-def initialize_agents(arglist):
+def initialize_agents(arglist, obs):
     real_agents = []
 
     with open("utils/levels/{}.txt".format(arglist.level), "r") as f:
@@ -144,6 +144,7 @@ def initialize_agents(arglist):
                         name="agent-" + str(len(real_agents) + 1),
                         id_color=COLORS[len(real_agents)],
                         recipes=recipes,
+                        obs=obs,
                     )
                     real_agents.append(real_agent)
 
@@ -157,7 +158,7 @@ def main_loop(arglist):
     obs = env.reset()
 
     # game = GameVisualize(env)
-    real_agents = initialize_agents(arglist=arglist)
+    real_agents = initialize_agents(arglist=arglist, obs=obs)
 
     # Info bag for saving pkl files
     bag = Bag(arglist=arglist, filename=env.filename)

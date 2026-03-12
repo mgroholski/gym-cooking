@@ -36,7 +36,6 @@ def interact(agent, world):
         elif isinstance(gs, Trash):
             obj = agent.holding
             agent.release()
-            world.remove(obj)
             gs.acquire(obj)
 
         # if occupied gridsquare in front --> try merging

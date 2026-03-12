@@ -702,9 +702,10 @@ class E2E_BRTDP:
             # TODO: If the macro-action doesn't need to involve both agents, one should be released
             # TODO: Is there a result of having two salads? The agent 2 thinks the other agent is going to move to get lettuce and agent 1 thinks
             # the other agent is interacting with what was just put down
-            #
+
             if action == ((0, 0), (0, 0)):
-                breakpoint()
+                print("Hit action ((0,0), (0,0))")
+                # breakpoint()
             print("chose action:", action)
             print("cost:", self.cost(cur_state, action))
             return action

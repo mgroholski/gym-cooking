@@ -158,13 +158,17 @@ class Delivery(GridSquare):
 
 class Trash(GridSquare):
     def __init__(self, location):
+        # TODO: We measure completness by adding a new object to the game. We'll want to keep the trash objects but make them inaccesible
+        # and hide their graphics
+        #
+        # We'll want to test if a subtask is complete by adding an object to the environment in the completed state
         GridSquare.__init__(self, "Trash", location)
         self.rep = Rep.TRASH
         self.holding = []
 
     def acquire(self, obj):
         obj.location = self.location
-        del obj
+        self.holding.append(obj)
 
     def release(self):
         return None
