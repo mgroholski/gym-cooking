@@ -141,13 +141,11 @@ class Delivery(GridSquare):
 
     def acquire(self, obj):
         obj.location = self.location
-        del obj
+        obj.is_delivered = True
+        self.holding.append(obj)
 
     def release(self):
-        if self.holding:
-            return self.holding.pop()
-        else:
-            return None
+        return None
 
     def __eq__(self, other):
         return GridSquare.__eq__(self, other)
@@ -158,10 +156,7 @@ class Delivery(GridSquare):
 
 class Trash(GridSquare):
     def __init__(self, location):
-        # TODO: We measure completness by adding a new object to the game. We'll want to keep the trash objects but make them inaccesible
-        # and hide their graphics
-        #
-        # We'll want to test if a subtask is complete by adding an object to the environment in the completed state
+
         GridSquare.__init__(self, "Trash", location)
         self.rep = Rep.TRASH
         self.holding = []
@@ -185,7 +180,7 @@ class Trash(GridSquare):
 # -----------------------------------------------------------
 # Objects are wrappers around foods items, plates, and any combination of them
 
-ObjectRepr = namedtuple("ObjectRepr", "name location is_held")
+ObjectRepr = namedtuple("ObjectRepr", "name location is_held is_delivered")
 
 
 class Object:
@@ -196,6 +191,7 @@ class Object:
         self.update_names()
         self.collidable = False
         self.dynamic = False
+        self.is_delivered = False
 
     def __str__(self):
         res = "-".join(
@@ -230,7 +226,10 @@ class Object:
 
     def get_repr(self):
         return ObjectRepr(
-            name=self.full_name, location=self.location, is_held=self.is_held
+            name=self.full_name,
+            location=self.location,
+            is_held=self.is_held,
+            is_delivered=self.is_delivered,
         )
 
     def update_names(self):

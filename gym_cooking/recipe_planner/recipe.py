@@ -1,6 +1,8 @@
 import recipe_planner.utils as recipe
 from utils.core import *
 
+RecipeRepr = namedtuple("RecipeRepr", "name")
+
 
 class Recipe:
     def __init__(self, name):
@@ -9,7 +11,16 @@ class Recipe:
         self.actions = set()
         self.actions.add(recipe.Get("Plate"))
 
+    def __eq__(self, other):
+        return self.name == other.name
+
+    def __hash__(self):
+        return object.__hash__(self)
+
     def __str__(self):
+        return self.name
+
+    def get_repr(self):
         return self.name
 
     def add_ingredient(self, item):

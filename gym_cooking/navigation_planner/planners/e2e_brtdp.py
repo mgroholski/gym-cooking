@@ -328,92 +328,35 @@ class E2E_BRTDP:
         # Termination condition is when desired object is at a Deliver location.
         elif isinstance(subtask, Deliver):
             self.cur_obj_count = len(
-                list(
-                    filter(
-                        lambda o: (
-                            o
-                            in set(
-                                env.world.get_all_object_locs(self.subtask_action_obj)
-                            )
-                        ),
-                        env.world.get_object_locs(self.goal_obj, is_held=False),
-                    )
-                )
-            )
+                    list(filter(lambda o: o in set(env.world.get_all_object_locs(
+                            self.subtask_action_obj)),
+                    env.world.get_object_locs(self.goal_obj, is_held=False))))
             self.has_more_obj = lambda x: int(x) > self.cur_obj_count
             self.is_goal_state = lambda h: self.has_more_obj(
-                len(
-                    list(
-                        filter(
-                            lambda o: (
-                                o
-                                in set(
-                                    env.world.get_all_object_locs(
-                                        self.subtask_action_obj
-                                    )
-                                )
-                            ),
-                            self.repr_to_env_dict[h].world.get_object_locs(
-                                self.goal_obj, is_held=False
-                            ),
-                        )
-                    )
-                )
-            )
+                    len(list(filter(lambda o: o in set(env.world.get_all_object_locs(self.subtask_action_obj)),
+                    self.repr_to_env_dict[h].world.get_object_locs(self.goal_obj, is_held=False)))))
 
             if self.removed_object is not None and self.removed_object == self.goal_obj:
                 self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(
-                        list(
-                            filter(
-                                lambda o: (
-                                    o
-                                    in set(
-                                        env.world.get_all_object_locs(
-                                            self.subtask_action_obj
-                                        )
-                                    )
-                                ),
-                                w.get_object_locs(self.goal_obj, is_held=False),
-                            )
-                        )
-                    )
-                    + 1
-                )
+                        len(list(filter(lambda o: o in set(env.world.get_all_object_locs(self.subtask_action_obj)),
+                        w.get_object_locs(self.goal_obj, is_held=False)))) + 1)
             else:
                 self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(
-                        list(
-                            filter(
-                                lambda o: (
-                                    o
-                                    in set(
-                                        env.world.get_all_object_locs(
-                                            self.subtask_action_obj
-                                        )
-                                    )
-                                ),
-                                w.get_object_locs(obj=self.goal_obj, is_held=False),
-                            )
-                        )
-                    )
-                )
+                        len(list(filter(lambda o: o in set(env.world.get_all_object_locs(self.subtask_action_obj)),
+                        w.get_object_locs(obj=self.goal_obj, is_held=False)))))
         else:
             # Get current count of desired objects.
             self.cur_obj_count = len(env.world.get_all_object_locs(self.goal_obj))
             # Goal state is reached when the number of desired objects has increased.
             self.has_more_obj = lambda x: int(x) > self.cur_obj_count
             self.is_goal_state = lambda h: self.has_more_obj(
-                len(self.repr_to_env_dict[h].world.get_all_object_locs(self.goal_obj))
-            )
+                    len(self.repr_to_env_dict[h].world.get_all_object_locs(self.goal_obj)))
             if self.removed_object is not None and self.removed_object == self.goal_obj:
                 self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(w.get_all_object_locs(self.goal_obj)) + 1
-                )
+                        len(w.get_all_object_locs(self.goal_obj)) + 1)
             else:
                 self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(w.get_all_object_locs(self.goal_obj))
-                )
+                        len(w.get_all_object_locs(self.goal_obj)))
 
     def _configure_planner_space(self, subtask_agent_names):
         """Configure planner to either plan in joint space or single-agent space."""
@@ -484,6 +427,8 @@ class E2E_BRTDP:
 
         # Goal state has value 0.
         if self.is_goal_state(es_repr):
+
+
             self.v_l[(es_repr, self.subtask)] = 0.0
             self.v_u[(es_repr, self.subtask)] = 0.0
             return
@@ -686,7 +631,7 @@ class E2E_BRTDP:
 
         # Determine best action after BRTDP.
         if self.is_goal_state(cur_state.get_repr()):
-            print("already at goal state, self.cur_obj_count:", self.cur_obj_count)
+            print("already at goal state...")
             return None
         else:
             actions = self.get_actions(state_repr=cur_state.get_repr())
@@ -699,13 +644,10 @@ class E2E_BRTDP:
 
             action_index = argmin(np.array(qvals))
             action = actions[action_index]
-            # TODO: If the macro-action doesn't need to involve both agents, one should be released
-            # TODO: Is there a result of having two salads? The agent 2 thinks the other agent is going to move to get lettuce and agent 1 thinks
-            # the other agent is interacting with what was just put down
 
-            if action == ((0, 0), (0, 0)):
-                print("Hit action ((0,0), (0,0))")
-                # breakpoint()
+            if action == (0,0):
+                breakpoint()
+
             print("chose action:", action)
             print("cost:", self.cost(cur_state, action))
             return action

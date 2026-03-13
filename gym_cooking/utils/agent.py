@@ -320,7 +320,6 @@ class RealAgent:
             )
 
             return new_obj_count > cur_obj_count
-
         else:
             cur_obj_cnt = len(self.world.get_all_object_locs(obj=goal_obj))
             return len(world.get_all_object_locs(obj=goal_obj)) > cur_obj_cnt
@@ -375,8 +374,8 @@ class RealAgent:
             # Current count of desired objects.
             self.cur_obj_count = len(env.world.get_all_object_locs(obj=self.goal_obj))
             # Goal state is reached when the number of desired objects has increased.
-            self.is_subtask_complete = lambda world: (
-                len(world.get_all_object_locs(obj=self.goal_obj)) > self.cur_obj_count
+            self.is_subtask_complete = lambda w: (
+                len(w.get_all_object_locs(obj=self.goal_obj)) > self.cur_obj_count
             )
 
 

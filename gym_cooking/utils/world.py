@@ -24,7 +24,10 @@ class World:
         self.delivered_dishes = []
 
     def get_repr(self):
-        return self.get_dynamic_objects()
+        return self.get_dynamic_objects() + self.get_order_queue_repr()
+
+    def get_order_queue_repr(self):
+        return tuple(i.get_repr() for i in self.order_queue)
 
     def __str__(self):
         _display = list(map(lambda x: "".join(map(lambda y: y + " ", x)), self.rep))

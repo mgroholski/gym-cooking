@@ -114,6 +114,7 @@ class BayesianDelegator(Delegator):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
         if subtask is None:
+            print("Subtask is none...")
             return 0
         _ = self.planner.get_next_action(
             env=obs,
@@ -122,6 +123,8 @@ class BayesianDelegator(Delegator):
             other_agent_planners={},
         )
         value = self.planner.v_l[(self.planner.cur_state.get_repr(), subtask)]
+        if value == 0:
+            breakpoint()
         return value
 
     def prune_subtask_allocs(self, observation, subtask_alloc_probs):
@@ -157,8 +160,6 @@ class BayesianDelegator(Delegator):
         print("{} setting priors".format(self.agent_name))
         self.incomplete_subtasks = incomplete_subtasks
 
-        # Chop(Tomato is not being removed from incomplete subtasks)
-
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         probs.normalize()
@@ -180,18 +181,19 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
+
                     try:
                         lb = self.get_lower_bound_for_subtask_alloc(
                             obs=copy.copy(obs),
                             subtask=t.subtask,
                             subtask_agent_names=t.subtask_agent_names,
                         )
-                        print(lb)
                         total_weight += 1.0 / float(lb)
                     except Exception as e:
                         print(e)
-                        # breakpoint()
+                        breakpoint()
                         exit(0)
+
             # Weight by number of nonzero subtasks.
             some_probs.update(
                 subtask_alloc=subtask_alloc, factor=len(t) ** 2.0 * total_weight

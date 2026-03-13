@@ -95,6 +95,7 @@ class OvercookedEnvironment(gym.Env):
     def load_level(self, level, num_agents):
         x = 0
         y = 0
+
         with open("utils/levels/{}.txt".format(level), "r") as file:
             # Mark the phases of reading.
             phase = 1
@@ -118,9 +119,43 @@ class OvercookedEnvironment(gym.Env):
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
-                            self.world.objects.setdefault(newobj.name, []).append(
-                                newobj
-                            )
+
+                            # TODO: Remove
+                            if (x, y) == (5, 3):
+                                obj = Object(
+                                    location=(x, y),
+                                    contents=[
+                                        RepToClass["l"](),
+                                        RepToClass["t"](),
+                                        RepToClass["p"](),
+                                    ],
+                                )
+                                obj.contents[0].update_state()
+                                obj.contents[1].update_state()
+                                obj.update_names()
+                                newobj.acquire(obj=obj)
+                                self.world.insert(obj=newobj)
+                                self.world.insert(obj=obj)
+                            elif (x, y) == (5, 4):
+                                obj = Object(
+                                    location=(x, y),
+                                    contents=[
+                                        RepToClass["l"](),
+                                        RepToClass["t"](),
+                                        RepToClass["p"](),
+                                    ],
+                                )
+                                obj.contents[0].update_state()
+                                obj.contents[1].update_state()
+                                obj.update_names()
+                                newobj.acquire(obj=obj)
+                                self.world.insert(obj=newobj)
+                                self.world.insert(obj=obj)
+                            else:
+                                self.world.objects.setdefault(newobj.name, []).append(
+                                    newobj
+                                )
+
                         else:
                             # Empty. Set a Floor tile.
                             f = Floor(location=(x, y))
@@ -272,7 +307,7 @@ class OvercookedEnvironment(gym.Env):
         active_orders = self.order_queue
 
         if active_orders:
-            recipes = list(set(active_orders))
+            recipes = list({r.name: r for r in active_orders}.values())
         else:
             return []
 
@@ -559,6 +594,9 @@ class OvercookedEnvironment(gym.Env):
                     print(
                         f"Delivered {delivered_dish} which was {matching_order_idx}: {removed_dish.full_name}."
                     )
+
+                    self.world.delivered_dishes = []
+                    self.world.order_queue = self.order_queue
 
     def cache_distances(self):
         """Saving distances between world objects."""
