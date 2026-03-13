@@ -98,11 +98,8 @@ class OvercookedEnvironment(gym.Env):
         x = 0
         y = 0
 
-<<<<<<< Updated upstream
-=======
         agent_locs = []
         agent_visible_cols = []
->>>>>>> Stashed changes
         with open("utils/levels/{}.txt".format(level), "r") as file:
             # Mark the phases of reading.
             phase = 1
@@ -129,7 +126,6 @@ class OvercookedEnvironment(gym.Env):
                             self.world.objects.setdefault(newobj.name, []).append(
                                 newobj
                             )
-
                         else:
                             # Empty. Set a Floor tile.
                             f = Floor(location=(x, y))

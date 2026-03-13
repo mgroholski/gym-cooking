@@ -123,8 +123,7 @@ class BayesianDelegator(Delegator):
             other_agent_planners={},
         )
         value = self.planner.v_l[(self.planner.cur_state.get_repr(), subtask)]
-        if value == 0:
-            breakpoint()
+
         return value
 
     def prune_subtask_allocs(self, observation, subtask_alloc_probs):
@@ -191,7 +190,7 @@ class BayesianDelegator(Delegator):
                         total_weight += 1.0 / float(lb)
                     except Exception as e:
                         print(e)
-                        breakpoint()
+                        # breakpoint()
                         exit(0)
 
             # Weight by number of nonzero subtasks.
