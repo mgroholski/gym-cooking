@@ -40,6 +40,12 @@ def parse_arguments():
         help="Return observations as images (instead of objects)",
     )
     parser.add_argument(
+        "--partial-observable",
+        action="store_true",
+        default=False,
+        help="Use partial observability instead of full observability",
+    )
+    parser.add_argument(
         "--order-queue-size",
         type=int,
         default=1,
@@ -144,7 +150,7 @@ def initialize_agents(arglist, obs):
                         name="agent-" + str(len(real_agents) + 1),
                         id_color=COLORS[len(real_agents)],
                         recipes=recipes,
-                        obs=obs,
+                        obs=obs.get_agent_obs(len(real_agents)),
                     )
                     real_agents.append(real_agent)
 
@@ -167,15 +173,15 @@ def main_loop(arglist):
     while not env.done():
         action_dict = {}
 
-        for agent in real_agents:
-            action = agent.select_action(obs=obs)
+        for idx, agent in enumerate(real_agents):
+            action = agent.select_action(obs=obs.get_agent_obs(idx))
             action_dict[agent.name] = action
 
         obs, reward, done, info = env.step(action_dict=action_dict)
 
         # Agents
-        for agent in real_agents:
-            agent.refresh_subtasks(world=env.world)
+        for idx, agent in enumerate(real_agents):
+            agent.refresh_subtasks(world=obs.get_agent_obs(idx).world)
 
         # Saving info
         bag.add_status(cur_time=info["t"], real_agents=real_agents)

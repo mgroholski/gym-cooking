@@ -382,13 +382,14 @@ class RealAgent:
 class SimAgent:
     """Simulation agent used in the environment object."""
 
-    def __init__(self, name, id_color, location):
+    def __init__(self, name, id_color, location, observable_cols=(-1, -1)):
         self.name = name
         self.color = id_color
         self.location = location
         self.holding = None
         self.action = (0, 0)
         self.has_delivered = False
+        self.observable_cols = observable_cols
 
     def __str__(self):
         return color(self.name[-1], self.color)

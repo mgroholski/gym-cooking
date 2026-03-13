@@ -36,6 +36,8 @@ class OvercookedEnvironment(gym.Env):
         self.t = 0
         self.set_filename()
 
+        self.partially_observale = arglist.partial_observable
+
         # For visualizing episode.
         self.rep = []
 
@@ -96,6 +98,11 @@ class OvercookedEnvironment(gym.Env):
         x = 0
         y = 0
 
+<<<<<<< Updated upstream
+=======
+        agent_locs = []
+        agent_visible_cols = []
+>>>>>>> Stashed changes
         with open("utils/levels/{}.txt".format(level), "r") as file:
             # Mark the phases of reading.
             phase = 1
@@ -119,42 +126,9 @@ class OvercookedEnvironment(gym.Env):
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
-
-                            # TODO: Remove
-                            if (x, y) == (5, 3):
-                                obj = Object(
-                                    location=(x, y),
-                                    contents=[
-                                        RepToClass["l"](),
-                                        RepToClass["t"](),
-                                        RepToClass["p"](),
-                                    ],
-                                )
-                                obj.contents[0].update_state()
-                                obj.contents[1].update_state()
-                                obj.update_names()
-                                newobj.acquire(obj=obj)
-                                self.world.insert(obj=newobj)
-                                self.world.insert(obj=obj)
-                            elif (x, y) == (5, 4):
-                                obj = Object(
-                                    location=(x, y),
-                                    contents=[
-                                        RepToClass["l"](),
-                                        RepToClass["t"](),
-                                        RepToClass["p"](),
-                                    ],
-                                )
-                                obj.contents[0].update_state()
-                                obj.contents[1].update_state()
-                                obj.update_names()
-                                newobj.acquire(obj=obj)
-                                self.world.insert(obj=newobj)
-                                self.world.insert(obj=obj)
-                            else:
-                                self.world.objects.setdefault(newobj.name, []).append(
-                                    newobj
-                                )
+                            self.world.objects.setdefault(newobj.name, []).append(
+                                newobj
+                            )
 
                         else:
                             # Empty. Set a Floor tile.
@@ -167,14 +141,28 @@ class OvercookedEnvironment(gym.Env):
 
                 # Phase 3: Read in agent locations (up to num_agents).
                 elif phase == 3:
-                    if len(self.sim_agents) < num_agents:
-                        loc = line.split(" ")
-                        sim_agent = SimAgent(
-                            name="agent-" + str(len(self.sim_agents) + 1),
-                            id_color=COLORS[len(self.sim_agents)],
-                            location=(int(loc[0]), int(loc[1])),
-                        )
-                        self.sim_agents.append(sim_agent)
+                    loc = line.split(" ")
+                    agent_locs.append(loc)
+
+                elif phase == 4:
+                    col_rng = line.split(" ")
+                    agent_visible_cols.append(col_rng)
+
+        if len(agent_locs) != len(agent_visible_cols):
+            raise Exception("Agent visible columns != agent locations")
+
+        for idx in range(len(agent_locs)):
+            loc = agent_locs[idx]
+            col_rng = agent_visible_cols[idx]
+
+            if len(self.sim_agents) < num_agents:
+                sim_agent = SimAgent(
+                    name="agent-" + str(len(self.sim_agents) + 1),
+                    id_color=COLORS[len(self.sim_agents)],
+                    location=(int(loc[0]), int(loc[1])),
+                    observable_cols=(int(col_rng[0]), int(col_rng[1])),
+                )
+                self.sim_agents.append(sim_agent)
 
         self.distances = {}
         self.world.width = x + 1
@@ -298,6 +286,27 @@ class OvercookedEnvironment(gym.Env):
         for agent in self.sim_agents:
             x, y = agent.location
             self.rep[y][x] = str(agent)
+
+    def get_agent_obs(self, agent_idx):
+        env_copy = copy.copy(self)
+        if not self.partially_observale:
+            return env_copy
+
+        """
+        We'll need to obsecure the world and order queue.
+
+        World Partial Observability
+         - We'll want to get a copy of the world and remove the columns not within the agent's
+        visible column rng. We'll want to replace those values with a value that indicates
+        not observable.
+
+        Order Queue
+        - We'll want to edit the order queue to have a subset observable. We will have a command line
+        argument `r` that tells us the probability the next order, if there is one, will be displayed at
+        any timestamp.
+        """
+
+        raise NotImplementedError()
 
     def get_agent_names(self):
         return [agent.name for agent in self.sim_agents]
