@@ -123,33 +123,6 @@ class OvercookedEnvironment(gym.Env):
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
 
-                            # TODO: Remove
-                            # if (x, y) == (1, 6):
-                            #     obj = Object(
-                            #         location=(x, y),
-                            #         contents=[
-                            #             RepToClass["t"](),
-                            #             RepToClass["p"](),
-                            #         ],
-                            #     )
-                            #     obj.contents[0].update_state()
-                            #     obj.update_names()
-                            #     newobj.acquire(obj=obj)
-                            #     self.world.insert(obj=newobj)
-                            #     self.world.insert(obj=obj)
-                            # elif (x, y) == (0, 9):
-                            #     obj = Object(
-                            #         location=(x, y),
-                            #         contents=[
-                            #             RepToClass["l"](),
-                            #         ],
-                            #     )
-                            #     obj.contents[0].update_state()
-                            #     obj.update_names()
-                            #     newobj.acquire(obj=obj)
-                            #     self.world.insert(obj=newobj)
-                            #     self.world.insert(obj=obj)
-                            # else:
                             self.world.objects.setdefault(newobj.name, []).append(
                                 newobj
                             )
