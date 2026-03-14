@@ -172,10 +172,14 @@ class RealAgent:
         else:
             print("{} has no subtask".format(color(self.name, self.color)))
 
-        # Checks if any other incomplete subtasks are now complete
+        # In a two agent environment, there will only ever be two incomplete_tasks accomplished at any given timestamp.
+        # One of these subtasks will be accomplished by this agent and removed earlier within this function.
+        # Thus, we can break after one subtask is removed, if any.
         for incomplete_subtask in self.incomplete_subtasks:
             if self.check_incomplete_subtask(world, incomplete_subtask):
                 self.incomplete_subtasks.remove(incomplete_subtask)
+                break
+
         self.world = copy.copy(world)
 
         print(
