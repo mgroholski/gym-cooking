@@ -322,7 +322,11 @@ class RealAgent:
             return new_obj_count > cur_obj_count
         else:
             cur_obj_cnt = len(self.world.get_all_object_locs(obj=goal_obj))
-            return len(world.get_all_object_locs(obj=goal_obj)) > cur_obj_cnt
+            more_cur_obj = len(world.get_all_object_locs(obj=goal_obj)) > cur_obj_cnt
+
+            if more_cur_obj:
+                print(f"{subtask} is finished. Removing {subtask}.")
+            return more_cur_obj
 
     def def_subtask_completion(self, env):
         # Determine desired objects.
