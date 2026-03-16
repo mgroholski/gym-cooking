@@ -74,6 +74,27 @@ class OvercookedEnvironment(gym.Env):
                 )
         return new_env
 
+    def __deepcopy__(self, memo):
+        new_env = OvercookedEnvironment(self.arglist)
+        memo[id(self)] = new_env
+        new_env.__dict__ = self.__dict__.copy()
+        new_env.world = copy.deepcopy(self.world)
+        new_env.sim_agents = [copy.deepcopy(a) for a in self.sim_agents]
+        new_env.distances = self.distances
+        new_env.order_queue = copy.deepcopy(self.order_queue, memo)
+
+        # Avoid copying pygame surfaces.
+        if "game" in new_env.__dict__:
+            new_env.game = None
+
+        # Make sure new objects and new agents' holdings have the right pointers.
+        for a in new_env.sim_agents:
+            if a.holding is not None:
+                a.holding = new_env.world.get_object_at(
+                    location=a.location, desired_obj=None, find_held_objects=True
+                )
+        return new_env
+
     def set_filename(self):
         self.filename = "{}_agents{}_seed{}_orders{}".format(
             self.arglist.level,
@@ -93,7 +114,31 @@ class OvercookedEnvironment(gym.Env):
         self.filename += model
 
     def get_agent_obs(self, agent_idx):
-        return self
+        """
+        We'll want to obfuscate any information that the agent does not have visible.
+        This includes:
+            - Out of range columns
+                This is determined by sim_agent.observable_cols
+            - Order Queue
+                TODO
+        """
+        if self.arglist.partially_observable:
+            env_copy = copy.deepcopy(self)
+
+            # Obfuscates the world
+            observable_col_rng = self.sim_agents[agent_idx].observable_cols
+
+            for key, obj_list in env_copy.world.objects.items():
+                env_copy.world.objects[key] = [
+                    objs
+                    for objs in obj_list
+                    if observable_col_rng[0]
+                    <= objs.location[1]
+                    <= observable_col_rng[1]
+                ]
+
+        else:
+            return self
 
     def load_level(self, level, num_agents):
         x = 0

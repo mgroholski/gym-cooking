@@ -170,18 +170,18 @@ class RealAgent:
             if self.subtask_complete:
                 if self.subtask in self.incomplete_subtasks:
                     self.incomplete_subtasks.remove(self.subtask)
-
                     self.subtask_complete = True
         else:
             print("{} has no subtask".format(color(self.name, self.color)))
 
-        # In a two agent environment, there will only ever be two incomplete_tasks accomplished at any given timestamp.
-        # One of these subtasks will be accomplished by this agent and removed earlier within this function.
-        # Thus, we can break after one subtask is removed, if any.
-        for incomplete_subtask in self.incomplete_subtasks:
-            if self.check_incomplete_subtask(world, incomplete_subtask):
-                self.incomplete_subtasks.remove(incomplete_subtask)
-                break
+        if not self.subtask_complete:
+            # In a two agent environment, there will only ever be two incomplete_tasks accomplished at any given timestamp.
+            # One of these subtasks will be accomplished by this agent and removed earlier within this function.
+            # Thus, we can break after one subtask is removed, if any.
+            for incomplete_subtask in self.incomplete_subtasks:
+                if self.check_incomplete_subtask(world, incomplete_subtask):
+                    self.incomplete_subtasks.remove(incomplete_subtask)
+                    break
 
         self.world = copy.deepcopy(world)
 
@@ -406,7 +406,12 @@ class SimAgent:
         return color(self.name[-1], self.color)
 
     def __copy__(self):
-        a = SimAgent(name=self.name, id_color=self.color, location=self.location)
+        a = SimAgent(
+            name=self.name,
+            id_color=self.color,
+            location=self.location,
+            observable_cols=self.observable_cols,
+        )
         a.__dict__ = self.__dict__.copy()
         if self.holding is not None:
             a.holding = copy.copy(self.holding)

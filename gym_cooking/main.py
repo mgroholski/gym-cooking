@@ -40,7 +40,7 @@ def parse_arguments():
         help="Return observations as images (instead of objects)",
     )
     parser.add_argument(
-        "--partial-observable",
+        "--partially-observable",
         action="store_true",
         default=False,
         help="Use partial observability instead of full observability",
@@ -173,15 +173,17 @@ def main_loop(arglist):
     while not env.done():
         action_dict = {}
 
+        agent_obs = [obs.get_agent_obs(idx) for idx in range(len(real_agents))]
+
         for idx, agent in enumerate(real_agents):
-            action = agent.select_action(obs=obs.get_agent_obs(idx))
+            action = agent.select_action(obs=agent_obs[idx])
             action_dict[agent.name] = action
 
         obs, reward, done, info = env.step(action_dict=action_dict)
 
         # Agents
         for idx, agent in enumerate(real_agents):
-            agent.refresh_subtasks(world=obs.get_agent_obs(idx).world)
+            agent.refresh_subtasks(world=agent_obs[idx].world)
 
         # Saving info
         bag.add_status(cur_time=info["t"], real_agents=real_agents)
