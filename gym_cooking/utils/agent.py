@@ -44,7 +44,7 @@ class RealAgent:
         self.beta = arglist.beta
         self.none_action_prob = 0.5
 
-        self.world = copy.copy(obs.world)
+        self.world = copy.deepcopy(obs.world)
 
         self.model_type = agent_settings(arglist, name)
         if self.model_type == "up":
@@ -98,7 +98,7 @@ class RealAgent:
 
         self.update_subtasks(env=obs)
         self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
-            agent_name=self.name
+            agent_name=self.name,
         )
         self.plan(copy.copy(obs))
         return self.action
@@ -141,6 +141,7 @@ class RealAgent:
             model_type=self.model_type,
             planner=self.planner,
             none_action_prob=self.none_action_prob,
+            incomplete_subtasks=self.incomplete_subtasks,
         )
 
     def reset_subtasks(self):
@@ -169,6 +170,7 @@ class RealAgent:
             if self.subtask_complete:
                 if self.subtask in self.incomplete_subtasks:
                     self.incomplete_subtasks.remove(self.subtask)
+
                     self.subtask_complete = True
         else:
             print("{} has no subtask".format(color(self.name, self.color)))
@@ -181,7 +183,7 @@ class RealAgent:
                 self.incomplete_subtasks.remove(incomplete_subtask)
                 break
 
-        self.world = copy.copy(world)
+        self.world = copy.deepcopy(world)
 
         print(
             "{} incomplete subtasks:".format(color(self.name, self.color)),
@@ -205,7 +207,6 @@ class RealAgent:
             )
         else:
             if self.subtask is None:
-                # breakpoint()
                 self.delegator.set_priors(
                     obs=copy.copy(env),
                     incomplete_subtasks=self.incomplete_subtasks,
@@ -277,6 +278,7 @@ class RealAgent:
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
                 other_agent_planners=other_agent_planners,
+                incomplete_subtasks=tuple(self.incomplete_subtasks),
             )
 
             # If joint subtask, pick your part of the simulated joint plan.

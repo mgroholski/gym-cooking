@@ -290,7 +290,6 @@ class OvercookedEnvironment(gym.Env):
 
         all_subtasks = []
         for idx, order in enumerate(active_orders):
-            print(f"Creating order with idx {idx}.")
             for subtask in subtasks_by_recipe[order.name]:
                 subtask = copy.deepcopy(subtask)
                 subtask.order_idx = idx

@@ -20,7 +20,13 @@ SubtaskAllocation = namedtuple("SubtaskAllocation", "subtask subtask_agent_names
 
 class BayesianDelegator(Delegator):
     def __init__(
-        self, agent_name, all_agent_names, model_type, planner, none_action_prob
+        self,
+        agent_name,
+        all_agent_names,
+        model_type,
+        planner,
+        none_action_prob,
+        incomplete_subtasks,
     ):
         """Initializing Bayesian Delegator for agent_name.
 
@@ -41,6 +47,7 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -60,7 +67,7 @@ class BayesianDelegator(Delegator):
         if self.probs is None:
             return True
         # Get currently available subtasks.
-        self.incomplete_subtasks = incomplete_subtasks
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         # Compare previously available subtasks with currently available subtasks.
@@ -113,29 +120,6 @@ class BayesianDelegator(Delegator):
     def get_lower_bound_for_subtask_alloc(self, obs, subtask, subtask_agent_names):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
-
-        """
-        We'll need to determine what to do here. The value that's being returned is 0 but the state
-        is updated such that now there's a single choppedlettuce (or choppedtomato). However, it's still 0.0.
-
-        What ways are this possible?
-
-        1. The current representation is a goal state.
-            It is not is. Checking is_goal_state in the current state yields false.
-        2. Line 218: The Q function returns 0
-            The q function returns 1.0 for the cur_state, (0,0), and self.planner.v_l
-        3. Line 249: The minimum value of the Q value of all the actions is 0
-            This chooses the min q value of all actions. This still would not yield 0.
-        4. Line 510: It's decremented by 1.09 in value_init
-
-        After further analysis, the representation and subtask combination is set to 0 as being a goal state.
-        If we want to use this code, we should differentiate the task for recipe a and recipe b.
-
-        We should think harder about this in the morning and understand their cache-ing mechanism. These subtasks
-        should be transferrable between recipes. However, the current state was a goal_env for a subtask with the same
-        name so it's difficult to differentiate.
-        """
-
         if subtask is None:
             print("Subtask is none...")
             return 0
@@ -144,12 +128,20 @@ class BayesianDelegator(Delegator):
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners={},
+            incomplete_subtasks=self.incomplete_subtasks,
         )
-        value = self.planner.v_l[(self.planner.cur_state.get_repr(), subtask)]
+        value = self.planner.v_l[
+            (
+                self.planner.cur_state.get_repr(),
+                subtask,
+                self.planner.is_sibling_subtasks_complete(
+                    subtask, self.incomplete_subtasks
+                ),
+            )
+        ]
 
         if value == 0:
-            # breakpoint()
-            pass
+            breakpoint()
 
         return value
 
@@ -184,7 +176,7 @@ class BayesianDelegator(Delegator):
     def set_priors(self, obs, incomplete_subtasks, priors_type):
         """Setting the prior probabilities for subtask allocations."""
         print("{} setting priors".format(self.agent_name))
-        self.incomplete_subtasks = incomplete_subtasks
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
@@ -216,9 +208,11 @@ class BayesianDelegator(Delegator):
                         total_weight += 1.0 / float(lb)
                     except Exception as e:
                         print(e)
-                        # breakpoint()
-                        # exit(1)
-                        total_weight += 0.0
+                        import traceback
+
+                        traceback.print_exc()
+                        breakpoint()
+                        exit(1)
 
             # Weight by number of nonzero subtasks.
             some_probs.update(
@@ -253,6 +247,7 @@ class BayesianDelegator(Delegator):
                     env=copy.copy(obs),
                     subtask=subtask,
                     subtask_agent_names=subtask_agent_names,
+                    incomplete_subtasks=self.incomplete_subtasks,
                 )
                 planners[other_agent_name] = planner
         return planners
@@ -271,7 +266,8 @@ class BayesianDelegator(Delegator):
         else:
             # Level 1 planning: Modify the state according to my beliefs.
             state, _ = self.planner._get_modified_state_with_other_agent_actions(
-                state=obs_tm1
+                state=obs_tm1,
+                incomplete_subtasks=self.incomplete_subtasks,
             )
             # Get other agent planners under my current beliefs.
             other_planners = self.get_other_agent_planners(
@@ -337,8 +333,14 @@ class BayesianDelegator(Delegator):
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_planners,
+            incomplete_subtasks=self.incomplete_subtasks,
         )
-        old_q = self.planner.Q(state=state, action=action, value_f=self.planner.v_l)
+        old_q = self.planner.Q(
+            state=state,
+            action=action,
+            value_f=self.planner.v_l,
+            incomplete_subtasks=self.incomplete_subtasks,
+        )
 
         # Collect actions the agents could have taken in obs_tm1.
         valid_nav_actions = self.planner.get_actions(state_repr=obs_tm1.get_repr())
@@ -365,7 +367,12 @@ class BayesianDelegator(Delegator):
         # Calculating the softmax Q_{subtask} for each action.
         qdiffs = [
             old_q
-            - self.planner.Q(state=state, action=nav_action, value_f=self.planner.v_l)
+            - self.planner.Q(
+                state=state,
+                action=nav_action,
+                value_f=self.planner.v_l,
+                incomplete_subtasks=self.incomplete_subtasks,
+            )
             for nav_action in valid_nav_actions
         ]
         softmax_diffs = sp.special.softmax(beta * np.asarray(qdiffs))
@@ -442,7 +449,7 @@ class BayesianDelegator(Delegator):
         """Return the entire distribution of subtask allocations."""
         subtask_allocs = []
 
-        subtasks = self.incomplete_subtasks
+        subtasks = list(self.incomplete_subtasks)
         # Just one agent: Assign itself to all subtasks.
         if len(self.all_agent_names) == 1:
             for t in subtasks:
