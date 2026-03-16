@@ -3,7 +3,16 @@ from collections import namedtuple
 import recipe_planner.utils as recipe
 from utils.core import *
 
-RecipeRepr = namedtuple("RecipeRepr", "name")
+OrderRepr = namedtuple("OrderRepr", "name")
+
+
+class Order:
+    def __init__(self, recipe, idx):
+        self.recipe = recipe
+        self.idx = idx
+
+    def get_repr(self):
+        return OrderRepr(name=self.recipe.name)
 
 
 class Recipe:
@@ -21,9 +30,6 @@ class Recipe:
 
     def __str__(self):
         return self.name
-
-    def get_repr(self):
-        return RecipeRepr(name=self.name)
 
     def add_ingredient(self, item):
         self.contents.append(item)

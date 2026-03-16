@@ -323,7 +323,7 @@ class OvercookedEnvironment(gym.Env):
         active_orders = self.order_queue
 
         if active_orders:
-            recipes = list({r.name: r for r in active_orders}.values())
+            recipes = list({o.recipe.name: o.recipe for o in active_orders}.values())
         else:
             return []
 
@@ -335,7 +335,7 @@ class OvercookedEnvironment(gym.Env):
 
         all_subtasks = []
         for idx, order in enumerate(active_orders):
-            for subtask in subtasks_by_recipe[order.name]:
+            for subtask in subtasks_by_recipe[order.recipe.name]:
                 subtask = copy.deepcopy(subtask)
                 subtask.order_idx = idx
                 all_subtasks.append(subtask)
@@ -351,9 +351,11 @@ class OvercookedEnvironment(gym.Env):
             recipe_indices = np.random.choice(
                 len(self.recipes), size=self.order_queue_size, replace=True
             )
-            self.order_queue = [self.recipes[i] for i in recipe_indices]
+            self.order_queue = [
+                Order(self.recipes[i], idx) for idx, i in enumerate(recipe_indices)
+            ]
 
-        print("Order Queue: ", [r.name for r in self.order_queue])
+        print("Order Queue: ", [r.get_repr() for r in self.order_queue])
         self.world.order_queue = copy.deepcopy(self.order_queue)
 
     def get_AB_locs_given_objs(
@@ -601,7 +603,7 @@ class OvercookedEnvironment(gym.Env):
                     (
                         idx
                         for idx, order in enumerate(self.order_queue)
-                        if order.full_state_plate_name == delivered_dish
+                        if order.recipe.full_state_plate_name == delivered_dish
                     ),
                     -1,
                 )
@@ -609,7 +611,7 @@ class OvercookedEnvironment(gym.Env):
                 if matching_order_idx >= 0:
                     removed_dish = self.order_queue.pop(matching_order_idx)
                     print(
-                        f"Delivered {delivered_dish} which was {matching_order_idx}: {removed_dish.full_name}."
+                        f"Delivered {delivered_dish} which was {matching_order_idx}: {removed_dish.recipe.full_name}."
                     )
 
                     self.world.delivered_dishes = []

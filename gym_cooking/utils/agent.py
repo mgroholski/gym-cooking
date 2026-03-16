@@ -109,7 +109,7 @@ class RealAgent:
         active_orders = list(getattr(world, "order_queue", []))
 
         if active_orders:
-            recipes = list(set(active_orders))
+            recipes = list(set([o.recipe for o in active_orders]))
         else:
             return []
 
@@ -121,7 +121,7 @@ class RealAgent:
 
         all_subtasks = []
         for idx, order in enumerate(active_orders):
-            for subtask in subtasks_by_recipe[order.name]:
+            for subtask in subtasks_by_recipe[order.recipe.name]:
                 subtask = copy.deepcopy(subtask)
                 subtask.order_idx = idx
                 all_subtasks.append(subtask)
@@ -182,6 +182,12 @@ class RealAgent:
                 if self.check_incomplete_subtask(world, incomplete_subtask):
                     self.incomplete_subtasks.remove(incomplete_subtask)
                     break
+
+        order_idx_set = set([o.idx for o in world.order_queue])
+
+        for incomplete_subtask in self.incomplete_subtasks:
+            if incomplete_subtask.order_idx not in order_idx_set:
+                self.incomplete_subtasks.remove(incomplete_subtask)
 
         self.world = copy.deepcopy(world)
 

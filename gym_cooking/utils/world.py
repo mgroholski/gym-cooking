@@ -327,7 +327,7 @@ class World:
                 (
                     idx
                     for idx, order in enumerate(self.order_queue)
-                    if order.full_state_plate_name == obj.full_name
+                    if order.recipe.full_state_plate_name == obj.full_name
                 ),
                 -1,
             )
@@ -335,7 +335,7 @@ class World:
             if matching_order_idx >= 0:
                 removed_dish = self.order_queue.pop(matching_order_idx)
                 print(
-                    f"Delivered {obj.full_name} which was {matching_order_idx}: {removed_dish.full_state_plate_name}."
+                    f"Delivered {obj.full_name} which was {matching_order_idx}: {removed_dish.recipe.full_state_plate_name}."
                 )
 
     def get_object_locs(self, obj, is_held):

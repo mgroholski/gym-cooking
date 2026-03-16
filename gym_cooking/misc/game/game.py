@@ -87,7 +87,7 @@ class Game:
     def draw_order_queue(self, order_row_y, x_offset=0):
         order_queue = list(getattr(self.world, "order_queue", []))
         for idx, order in enumerate(order_queue):
-            order_name = order.full_state_name
+            order_name = order.recipe.full_state_name
             order_x = idx * self.scale + x_offset
             order_location = (order_x, order_row_y)
             fill = pygame.Rect(order_x, order_row_y, self.scale, self.scale)
