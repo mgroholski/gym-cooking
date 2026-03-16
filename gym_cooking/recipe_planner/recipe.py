@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 import recipe_planner.utils as recipe
 from utils.core import *
 
@@ -21,7 +23,7 @@ class Recipe:
         return self.name
 
     def get_repr(self):
-        return self.name
+        return RecipeRepr(name=self.name)
 
     def add_ingredient(self, item):
         self.contents.append(item)

@@ -69,7 +69,7 @@ class Trashed(Predicate):
 # ACTIONS
 # -------------------------------------------------------------
 class Action:
-    def __init__(self, name, pre, post_add):
+    def __init__(self, name, pre, post_add, order_idx=-1):
         self.name = name
         # pre, post_add, post_delete must be lists of Predicates
         self.pre = self.pre_default if (pre is None) else pre
@@ -77,12 +77,16 @@ class Action:
         # assume just delete all the preconditions
         self.set_specs()
         self.is_joint = False
+        self.order_idx = order_idx
 
     def __str__(self):
-        return "{}({})".format(self.name, ", ".join(self.args))
+        if self.order_idx >= 0:
+            return "{}_{}({})".format(self.name, self.order_idx, ", ".join(self.args))
+        else:
+            return "{}({})".format(self.name, ", ".join(self.args))
 
     def __repr__(self):
-        return "{}({})".format(self.name, ", ".join(self.args))
+        return self.__str__()
 
     def set_specs(self):
         self.specs = "\n{}({})\n".format(self.name, ", ".join(self.args))
@@ -107,10 +111,14 @@ class Action:
     def __eq__(self, other):
         if other is None:
             return False
-        return (self.name == other.name) and (self.args == other.args)
+        return (
+            (self.name == other.name)
+            and (self.order_idx == other.order_idx)
+            and (self.args == other.args)
+        )
 
     def __hash__(self):
-        return hash((self.name, self.args))
+        return hash((self.name, self.order_idx, self.args))
 
     def _get_pre_groups(self):
         if self.pre is None:
@@ -157,13 +165,13 @@ Post: Fresh(X)
 
 
 class Get(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, order_idx=-1):
         self.args = (obj,)  # ('Tomato')
 
         self.pre_default = [[NoPredicate()]]
         self.post_add_default = [Fresh(obj), NoPredicate()]
 
-        Action.__init__(self, "Get", pre, post_add)
+        Action.__init__(self, "Get", pre, post_add, order_idx)
 
 
 """
@@ -174,13 +182,13 @@ Post: Chopped(X), !Fresh(X)
 
 
 class Chop(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, order_idx=-1):
         self.args = (obj,)
 
         self.pre_default = [[Fresh(obj)]]
         self.post_add_default = [Chopped(obj)]
 
-        Action.__init__(self, "Chop", pre, post_add)
+        Action.__init__(self, "Chop", pre, post_add, order_idx)
 
 
 """
@@ -191,13 +199,13 @@ Post: Cooked(X), !Fresh(X)
 
 
 class Cook(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, order_idx=-1):
         self.args = (obj,)
 
         self.pre_default = [[Fresh(obj)]]
         self.post_add_default = [Cooked(obj)]
 
-        Action.__init__(self, "Cook", pre, post_add)
+        Action.__init__(self, "Cook", pre, post_add, order_idx)
 
 
 """
@@ -208,7 +216,7 @@ Post: Merged(X-Y), !SomeState(X), !SomeState(Y)
 
 
 class Merge(Action):
-    def __init__(self, arg1, arg2, pre=None, post_add=None):
+    def __init__(self, arg1, arg2, pre=None, post_add=None, order_idx=-1):
         self.args = (arg1, arg2)
         # self.args = tuple(sorted([arg1, arg2]))
         # sorted because it doesn't matter order of merging
@@ -218,7 +226,7 @@ class Merge(Action):
             Merged("-".join(sorted(arg1.split("-") + arg2.split("-"))))
         ]
 
-        Action.__init__(self, "Merge", pre, post_add)
+        Action.__init__(self, "Merge", pre, post_add, order_idx)
 
 
 """
@@ -229,11 +237,11 @@ Post: Delivered(X), !Plated(X)
 
 
 class Deliver(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, order_idx=-1):
         self.args = (obj,)
         self.pre_default = [[Merged(obj)]]
         self.post_add_default = [Delivered(obj)]
-        Action.__init__(self, "Deliver", pre, post_add)
+        Action.__init__(self, "Deliver", pre, post_add, order_idx)
 
 
 """

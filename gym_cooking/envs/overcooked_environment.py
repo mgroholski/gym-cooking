@@ -288,11 +288,13 @@ class OvercookedEnvironment(gym.Env):
             max_path_length=self.arglist.max_num_subtasks
         )
 
-        all_subtasks = [
-            subtask
-            for order in active_orders
-            for subtask in subtasks_by_recipe[order.name]
-        ]
+        all_subtasks = []
+        for idx, order in enumerate(active_orders):
+            print(f"Creating order with idx {idx}.")
+            for subtask in subtasks_by_recipe[order.name]:
+                subtask = copy.deepcopy(subtask)
+                subtask.order_idx = idx
+                all_subtasks.append(subtask)
 
         print("All Subtasks:", all_subtasks, "\n")
         return all_subtasks

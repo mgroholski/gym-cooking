@@ -113,6 +113,29 @@ class BayesianDelegator(Delegator):
     def get_lower_bound_for_subtask_alloc(self, obs, subtask, subtask_agent_names):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
+
+        """
+        We'll need to determine what to do here. The value that's being returned is 0 but the state
+        is updated such that now there's a single choppedlettuce (or choppedtomato). However, it's still 0.0.
+
+        What ways are this possible?
+
+        1. The current representation is a goal state.
+            It is not is. Checking is_goal_state in the current state yields false.
+        2. Line 218: The Q function returns 0
+            The q function returns 1.0 for the cur_state, (0,0), and self.planner.v_l
+        3. Line 249: The minimum value of the Q value of all the actions is 0
+            This chooses the min q value of all actions. This still would not yield 0.
+        4. Line 510: It's decremented by 1.09 in value_init
+
+        After further analysis, the representation and subtask combination is set to 0 as being a goal state.
+        If we want to use this code, we should differentiate the task for recipe a and recipe b.
+
+        We should think harder about this in the morning and understand their cache-ing mechanism. These subtasks
+        should be transferrable between recipes. However, the current state was a goal_env for a subtask with the same
+        name so it's difficult to differentiate.
+        """
+
         if subtask is None:
             print("Subtask is none...")
             return 0
@@ -123,6 +146,10 @@ class BayesianDelegator(Delegator):
             other_agent_planners={},
         )
         value = self.planner.v_l[(self.planner.cur_state.get_repr(), subtask)]
+
+        if value == 0:
+            # breakpoint()
+            pass
 
         return value
 
@@ -180,7 +207,6 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
-
                     try:
                         lb = self.get_lower_bound_for_subtask_alloc(
                             obs=copy.copy(obs),
@@ -191,7 +217,8 @@ class BayesianDelegator(Delegator):
                     except Exception as e:
                         print(e)
                         # breakpoint()
-                        exit(0)
+                        # exit(1)
+                        total_weight += 0.0
 
             # Weight by number of nonzero subtasks.
             some_probs.update(

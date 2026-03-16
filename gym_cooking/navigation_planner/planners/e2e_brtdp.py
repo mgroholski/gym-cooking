@@ -7,7 +7,6 @@ from enum import Enum
 from functools import lru_cache
 from itertools import product
 
-# Navigation planning
 import navigation_planner.utils as nav_utils
 import numpy as np
 import scipy as sp
@@ -18,6 +17,8 @@ from utils.interact import interact
 
 # Other core modules
 from utils.world import World
+
+# Navigation planning
 
 
 class PlannerLevel(Enum):
@@ -244,6 +245,7 @@ class E2E_BRTDP:
             self.v_u[(x_repr, self.subtask)] = min(
                 [self.Q(state=x, action=a, value_f=self.v_u) for a in actions]
             )
+
             self.v_l[(x_repr, self.subtask)] = min(
                 [self.Q(state=x, action=a, value_f=self.v_l) for a in actions]
             )
@@ -484,6 +486,7 @@ class E2E_BRTDP:
 
         # Goal state has value 0.
         if self.is_goal_state(es_repr):
+            # print(f"Setting {es_repr} with subtask {self.subtask} to 0.0.")
             self.v_l[(es_repr, self.subtask)] = 0.0
             self.v_u[(es_repr, self.subtask)] = 0.0
             return

@@ -1,5 +1,5 @@
 import copy
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, namedtuple
 from functools import lru_cache
 from itertools import combinations, product
 
@@ -9,6 +9,8 @@ import numpy as np
 import recipe_planner.utils as recipe
 from navigation_planner.utils import manhattan_dist
 from utils.core import Counter, GridSquare, Object
+
+OrderQueueRepr = namedtuple("OrderQueueRepr", "order_names")
 
 
 class World:
@@ -27,7 +29,7 @@ class World:
         return self.get_dynamic_objects() + self.get_order_queue_repr()
 
     def get_order_queue_repr(self):
-        return tuple(i.get_repr() for i in self.order_queue)
+        return OrderQueueRepr(order_names=tuple(o.get_repr() for o in self.order_queue))
 
     def __str__(self):
         _display = list(map(lambda x: "".join(map(lambda y: y + " ", x)), self.rep))
