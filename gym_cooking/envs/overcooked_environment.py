@@ -92,6 +92,10 @@ class OvercookedEnvironment(gym.Env):
             model += "_model3-{}".format(self.arglist.model3)
         if self.arglist.model4 is not None:
             model += "_model4-{}".format(self.arglist.model4)
+        if self.arglist.partially_observable:
+            model += "_partially-observable"
+        else:
+            model += "_fully-observable"
         self.filename += model
 
     def get_agent_obs(self, agent_idx):
@@ -341,7 +345,7 @@ class OvercookedEnvironment(gym.Env):
             self.order_queue.append(popped_order)
             popped_order.start_t = self.t
             print(
-                f"APPENDING ORDER: Adding {popped_order} to order queue at timestep {self.t}."
+                f"APPENDING ORDER: Adding {popped_order.recipe.name} to order queue at timestep {self.t}."
             )
 
     def initialize_order_queue(self):
