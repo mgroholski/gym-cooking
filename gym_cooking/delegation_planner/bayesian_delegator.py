@@ -47,7 +47,6 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
-        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -67,7 +66,7 @@ class BayesianDelegator(Delegator):
         if self.probs is None:
             return True
         # Get currently available subtasks.
-        self.incomplete_subtasks = tuple(incomplete_subtasks)
+        self.incomplete_subtasks = incomplete_subtasks
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         # Compare previously available subtasks with currently available subtasks.
@@ -128,17 +127,8 @@ class BayesianDelegator(Delegator):
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners={},
-            incomplete_subtasks=self.incomplete_subtasks,
         )
-        value = self.planner.v_l[
-            (
-                self.planner.cur_state.get_repr(),
-                subtask,
-                self.planner.is_sibling_subtasks_complete(
-                    subtask, self.incomplete_subtasks
-                ),
-            )
-        ]
+        value = self.planner.v_l[(self.planner.cur_state.get_repr(), subtask)]
 
         if value == 0:
             breakpoint()
@@ -176,8 +166,8 @@ class BayesianDelegator(Delegator):
     def set_priors(self, obs, incomplete_subtasks, priors_type):
         """Setting the prior probabilities for subtask allocations."""
         print("{} setting priors".format(self.agent_name))
-        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
+        self.incomplete_subtasks = incomplete_subtasks
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         probs.normalize()
@@ -199,20 +189,13 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
-                    try:
-                        lb = self.get_lower_bound_for_subtask_alloc(
-                            obs=copy.copy(obs),
-                            subtask=t.subtask,
-                            subtask_agent_names=t.subtask_agent_names,
-                        )
-                        total_weight += 1.0 / float(lb)
-                    except Exception as e:
-                        print(e)
-                        import traceback
 
-                        traceback.print_exc()
-                        breakpoint()
-                        exit(1)
+                    lb = self.get_lower_bound_for_subtask_alloc(
+                        obs=copy.copy(obs),
+                        subtask=t.subtask,
+                        subtask_agent_names=t.subtask_agent_names,
+                    )
+                    total_weight += 1.0 / float(lb)
 
             # Weight by number of nonzero subtasks.
             some_probs.update(
@@ -247,7 +230,6 @@ class BayesianDelegator(Delegator):
                     env=copy.copy(obs),
                     subtask=subtask,
                     subtask_agent_names=subtask_agent_names,
-                    incomplete_subtasks=self.incomplete_subtasks,
                 )
                 planners[other_agent_name] = planner
         return planners
@@ -267,7 +249,6 @@ class BayesianDelegator(Delegator):
             # Level 1 planning: Modify the state according to my beliefs.
             state, _ = self.planner._get_modified_state_with_other_agent_actions(
                 state=obs_tm1,
-                incomplete_subtasks=self.incomplete_subtasks,
             )
             # Get other agent planners under my current beliefs.
             other_planners = self.get_other_agent_planners(
@@ -333,13 +314,11 @@ class BayesianDelegator(Delegator):
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_planners,
-            incomplete_subtasks=self.incomplete_subtasks,
         )
         old_q = self.planner.Q(
             state=state,
             action=action,
             value_f=self.planner.v_l,
-            incomplete_subtasks=self.incomplete_subtasks,
         )
 
         # Collect actions the agents could have taken in obs_tm1.
@@ -371,7 +350,6 @@ class BayesianDelegator(Delegator):
                 state=state,
                 action=nav_action,
                 value_f=self.planner.v_l,
-                incomplete_subtasks=self.incomplete_subtasks,
             )
             for nav_action in valid_nav_actions
         ]
@@ -449,7 +427,7 @@ class BayesianDelegator(Delegator):
         """Return the entire distribution of subtask allocations."""
         subtask_allocs = []
 
-        subtasks = list(self.incomplete_subtasks)
+        subtasks = self.incomplete_subtasks
         # Just one agent: Assign itself to all subtasks.
         if len(self.all_agent_names) == 1:
             for t in subtasks:

@@ -88,7 +88,7 @@ class E2E_BRTDP:
         return copy_
 
     @lru_cache(maxsize=10000)
-    def T(self, state_repr, action, incomplete_subtasks):
+    def T(self, state_repr, action):
         """Return next states when taking action from state."""
         state = self.repr_to_env_dict[state_repr]
         subtask_agents = self.get_subtask_agents(env_state=state)
@@ -123,7 +123,7 @@ class E2E_BRTDP:
         # Track this state in value function and repr dict
         # if it's a new state.
         self.repr_init(env_state=sim_state)
-        self.value_init(env_state=sim_state, incomplete_subtasks=incomplete_subtasks)
+        self.value_init(env_state=sim_state)
         return sim_state
 
     def get_actions(self, state_repr):
@@ -162,7 +162,7 @@ class E2E_BRTDP:
                     output_actions.append(va)
         return output_actions
 
-    def runSampleTrial(self, incomplete_subtasks):
+    def runSampleTrial(self):
         """runSampleTrial from BRTDP paper."""
         start_time = time.time()
         x = self.start
@@ -171,12 +171,8 @@ class E2E_BRTDP:
         # Terminating if this takes too long e.g. path is infeasible.
         counter = 0
         start_repr = self.start.get_repr()
-        is_sibling_subtasks_complete = self.is_sibling_subtasks_complete(
-            self.subtask, incomplete_subtasks
-        )
         diff = (
-            self.v_u[(start_repr, self.subtask, is_sibling_subtasks_complete)]
-            - self.v_l[(start_repr, self.subtask, is_sibling_subtasks_complete)]
+            self.v_u[(start_repr, self.subtask)] - self.v_l[(start_repr, self.subtask)]
         )
         print("DIFF AT START: {}".format(diff))
 
@@ -194,9 +190,7 @@ class E2E_BRTDP:
             # other agents. Otherwise, the modified_state will be the same
             # as state `x`.
             modified_state, other_agent_actions = (
-                self._get_modified_state_with_other_agent_actions(
-                    x, incomplete_subtasks
-                )
+                self._get_modified_state_with_other_agent_actions(x)
             )
             modified_state_repr = modified_state.get_repr()
 
@@ -210,7 +204,6 @@ class E2E_BRTDP:
                         state=modified_state,
                         action=a,
                         value_f=self.v_u,
-                        incomplete_subtasks=incomplete_subtasks,
                     )
                     for a in actions
                 ]
@@ -223,7 +216,6 @@ class E2E_BRTDP:
                         state=modified_state,
                         action=a,
                         value_f=self.v_l,
-                        incomplete_subtasks=incomplete_subtasks,
                     )
                     for a in actions
                 ]
@@ -234,39 +226,22 @@ class E2E_BRTDP:
                 state=modified_state,
                 action=a,
                 value_f=self.v_l,
-                incomplete_subtasks=incomplete_subtasks,
             )
-            self.v_l[
-                (
-                    modified_state_repr,
-                    self.subtask,
-                    self.is_sibling_subtasks_complete(
-                        self.subtask, incomplete_subtasks
-                    ),
-                )
-            ] = new_lower
+            self.v_l[(modified_state_repr, self.subtask)] = new_lower
 
-            b = self.get_expected_diff(
-                modified_state, a, incomplete_subtasks=incomplete_subtasks
-            )
+            b = self.get_expected_diff(modified_state, a)
             B = sum(b.values())
             diff = (
                 self.v_u[
                     (
                         start_repr,
                         self.subtask,
-                        self.is_sibling_subtasks_complete(
-                            self.subtask, incomplete_subtasks
-                        ),
                     )
                 ]
                 - self.v_l[
                     (
                         start_repr,
                         self.subtask,
-                        self.is_sibling_subtasks_complete(
-                            self.subtask, incomplete_subtasks
-                        ),
                     )
                 ]
             ) / self.tau
@@ -278,7 +253,9 @@ class E2E_BRTDP:
             # Track this new state in repr dict and value function
             # if it's new.
             self.repr_init(env_state=x)
-            self.value_init(env_state=x, incomplete_subtasks=incomplete_subtasks)
+            self.value_init(
+                env_state=x,
+            )
         print(
             "RUN SAMPLE EXPLORED {} STATES, took {}".format(
                 len(traj), time.time() - start_time
@@ -288,58 +265,36 @@ class E2E_BRTDP:
             x = traj.pop()
             x_repr = x.get_repr()
             actions = self.get_actions(state_repr=x_repr)
-            is_sibling_tasks_complete = self.is_sibling_subtasks_complete(
-                self.subtask, incomplete_subtasks
-            )
-            self.v_u[(x_repr, self.subtask, is_sibling_tasks_complete)] = min(
-                [
-                    self.Q(
-                        state=x,
-                        action=a,
-                        value_f=self.v_u,
-                        incomplete_subtasks=incomplete_subtasks,
-                    )
-                    for a in actions
-                ]
+            self.v_u[(x_repr, self.subtask)] = min(
+                [self.Q(state=x, action=a, value_f=self.v_u) for a in actions]
             )
 
-            self.v_l[(x_repr, self.subtask, is_sibling_tasks_complete)] = min(
+            self.v_l[(x_repr, self.subtask)] = min(
                 [
                     self.Q(
                         state=x,
                         action=a,
                         value_f=self.v_l,
-                        incomplete_subtasks=incomplete_subtasks,
                     )
                     for a in actions
                 ]
             )
 
-    def main(self, incomplete_subtasks):
+    def main(self):
         """Main loop function for BRTDP."""
         main_counter = 0
         start_repr = self.start.get_repr()
 
-        is_sibling_subtasks_complete = self.is_sibling_subtasks_complete(
-            self.subtask, incomplete_subtasks
-        )
-        upper = self.v_u[(start_repr, self.subtask, is_sibling_subtasks_complete)]
-        lower = self.v_l[(start_repr, self.subtask, is_sibling_subtasks_complete)]
+        upper = self.v_u[(start_repr, self.subtask)]
+        lower = self.v_l[(start_repr, self.subtask)]
         diff = upper - lower
 
         # Run until convergence or until you max out on iteration
         while (diff > self.alpha) and (main_counter < self.main_cap):
             print("\nstarting main loop #", main_counter)
 
-            is_sibling_subtasks_complete = self.is_sibling_subtasks_complete(
-                self.subtask, incomplete_subtasks
-            )
-            new_upper = self.v_u[
-                (start_repr, self.subtask, is_sibling_subtasks_complete)
-            ]
-            new_lower = self.v_l[
-                (start_repr, self.subtask, is_sibling_subtasks_complete)
-            ]
+            new_upper = self.v_u[(start_repr, self.subtask)]
+            new_lower = self.v_l[(start_repr, self.subtask)]
             new_diff = new_upper - new_lower
             if new_diff > diff + 0.01:
                 self.start.update_display()
@@ -352,7 +307,7 @@ class E2E_BRTDP:
             lower = new_lower
             main_counter += 1
             print("diff = {}, self.alpha = {}".format(diff, self.alpha))
-            self.runSampleTrial(incomplete_subtasks)
+            self.runSampleTrial()
 
     def _configure_planner_level(self, env, subtask_agent_names, other_agent_planners):
         """Configure the planner s.t. it best responds to other agents as needed.
@@ -506,7 +461,6 @@ class E2E_BRTDP:
         env,
         subtask,
         subtask_agent_names,
-        incomplete_subtasks,
         other_agent_planners={},
     ):
         """Configure planner."""
@@ -537,7 +491,7 @@ class E2E_BRTDP:
         # Set start state.
         self.start = copy.copy(env)
         self.repr_init(env_state=env)
-        self.value_init(env_state=env, incomplete_subtasks=incomplete_subtasks)
+        self.value_init(env_state=env)
 
     def get_subtask_agents(self, env_state):
         """Return subtask agent for this planner given state."""
@@ -560,35 +514,20 @@ class E2E_BRTDP:
             self.repr_to_env_dict[es_repr] = copy.copy(env_state)
         return es_repr
 
-    def is_sibling_subtasks_complete(self, subtask, incomplete_subtasks):
-        for task in incomplete_subtasks:
-            if (
-                task.name == subtask.name
-                and task.args == subtask.args
-                and task.order_idx < subtask.order_idx
-            ):
-                return False
-
-        return True
-
-    def value_init(self, env_state, incomplete_subtasks):
+    def value_init(self, env_state):
         """Initialize value for environment state."""
         # Skip if already initialized.
-        is_sibling_subtasks_complete = self.is_sibling_subtasks_complete(
-            self.subtask, incomplete_subtasks
-        )
         es_repr = env_state.get_repr()
-        if (es_repr, self.subtask, is_sibling_subtasks_complete) in self.v_l and (
+        if (es_repr, self.subtask) in self.v_l and (
             es_repr,
             self.subtask,
-            is_sibling_subtasks_complete,
         ) in self.v_u:
             return
 
         # Goal state has value 0.
         if self.is_goal_state(es_repr):
-            self.v_l[(es_repr, self.subtask, is_sibling_subtasks_complete)] = 0.0
-            self.v_u[(es_repr, self.subtask, is_sibling_subtasks_complete)] = 0.0
+            self.v_l[(es_repr, self.subtask)] = 0.0
+            self.v_u[(es_repr, self.subtask)] = 0.0
             return
 
         # Determine lower bound on this environment state.
@@ -608,36 +547,36 @@ class E2E_BRTDP:
             lower, env_state.display(), env_state.print_agents()
         )
 
-        self.v_l[(es_repr, self.subtask, is_sibling_subtasks_complete)] = lower - 1.09
-        self.v_u[(es_repr, self.subtask, is_sibling_subtasks_complete)] = (
+        self.v_l[(es_repr, self.subtask)] = lower - 1.09
+        self.v_u[(es_repr, self.subtask)] = (
             lower * 5 * (self.time_cost + self.action_cost)
         )
 
-    def Q(self, state, action, value_f, incomplete_subtasks):
+    def Q(
+        self,
+        state,
+        action,
+        value_f,
+    ):
         """Get Q value using value_f of (state, action)."""
         # Q(s,a) = c(x,a) + \sum_{y \in S} P(x, a, y) * v(y)
         cost = self.cost(state, action)
 
         # Initialize state if it's new.
         s_repr = self.repr_init(env_state=state)
-        self.value_init(env_state=state, incomplete_subtasks=incomplete_subtasks)
+        self.value_init(env_state=state)
 
         # Get next state.
-        next_state = self.T(
-            state_repr=s_repr, action=action, incomplete_subtasks=incomplete_subtasks
-        )
+        next_state = self.T(state_repr=s_repr, action=action)
 
         # Initialize new state if it's new.
         ns_repr = self.repr_init(env_state=next_state)
-        self.value_init(env_state=next_state, incomplete_subtasks=incomplete_subtasks)
+        self.value_init(env_state=next_state)
 
-        is_sibling = self.is_sibling_subtasks_complete(
-            self.subtask, incomplete_subtasks
-        )
-        expected_value = 1.0 * value_f[(ns_repr, self.subtask, is_sibling)]
+        expected_value = 1.0 * value_f[(ns_repr, self.subtask)]
         return float(cost + expected_value)
 
-    def V(self, state, _type, incomplete_subtasks):
+    def V(self, state, _type):
         """Get V*(x) = min_{a \in A} Q_{v*}(x, a)."""
 
         # Initialize state if it's new.
@@ -651,12 +590,7 @@ class E2E_BRTDP:
         if _type == "lower":
             return min(
                 [
-                    self.Q(
-                        state=state,
-                        action=action,
-                        value_f=self.v_l,
-                        incomplete_subtasks=incomplete_subtasks,
-                    )
+                    self.Q(state=state, action=action, value_f=self.v_l)
                     for action in self.get_actions(state_repr=s_repr)
                 ]
             )
@@ -664,12 +598,7 @@ class E2E_BRTDP:
         elif _type == "upper":
             return min(
                 [
-                    self.Q(
-                        state=state,
-                        action=action,
-                        value_f=self.v_u,
-                        incomplete_subtasks=incomplete_subtasks,
-                    )
+                    self.Q(state=state, action=action, value_f=self.v_u)
                     for action in self.get_actions(state_repr=s_repr)
                 ]
             )
@@ -688,32 +617,22 @@ class E2E_BRTDP:
                 cost += self.action_cost
         return cost
 
-    def get_expected_diff(self, start_state, action, incomplete_subtasks):
+    def get_expected_diff(self, start_state, action):
         # Get next state.
-        s_ = self.T(
-            state_repr=start_state.get_repr(),
-            action=action,
-            incomplete_subtasks=incomplete_subtasks,
-        )
+        s_ = self.T(state_repr=start_state.get_repr(), action=action)
 
         # Initialize state if it's new.
         s_repr = self.repr_init(env_state=s_)
-        self.value_init(env_state=s_, incomplete_subtasks=incomplete_subtasks)
+        self.value_init(env_state=s_)
 
         # Get expected diff.
-        is_sibling = self.is_sibling_subtasks_complete(
-            self.subtask, incomplete_subtasks
-        )
         b = {
             s_repr: 1.0
-            * (
-                self.v_u[(s_repr, self.subtask, is_sibling)]
-                - self.v_l[(s_repr, self.subtask, is_sibling)]
-            )
+            * (self.v_u[(s_repr, self.subtask)] - self.v_l[(s_repr, self.subtask)])
         }
         return b
 
-    def _get_modified_state_with_other_agent_actions(self, state, incomplete_subtasks):
+    def _get_modified_state_with_other_agent_actions(self, state):
         """Do nothing if the planner level is level 0.
 
         Otherwise, using self.other_agent_planners, anticipate what other agents will do
@@ -739,7 +658,6 @@ class E2E_BRTDP:
                 env=copy.copy(state),
                 subtask=other_planner.subtask,
                 subtask_agent_names=other_planner.subtask_agent_names,
-                incomplete_subtasks=incomplete_subtasks,
             )
 
             assert other_planner.planner_level == PlannerLevel.LEVEL0
@@ -755,7 +673,6 @@ class E2E_BRTDP:
                             state=other_planner.start,
                             action=action,
                             value_f=other_planner.v_l,
-                            incomplete_subtasks=incomplete_subtasks,
                         )
                         for action in possible_actions
                     ]
@@ -776,9 +693,7 @@ class E2E_BRTDP:
 
         # Initialize state if it's new.
         self.repr_init(env_state=modified_state)
-        self.value_init(
-            env_state=modified_state, incomplete_subtasks=incomplete_subtasks
-        )
+        self.value_init(env_state=modified_state)
         return modified_state, other_agent_actions
 
     def get_next_action(
@@ -787,7 +702,6 @@ class E2E_BRTDP:
         subtask,
         subtask_agent_names,
         other_agent_planners,
-        incomplete_subtasks,
     ):
         """Return next action."""
         print("-------------[e2e]-----------")
@@ -800,14 +714,11 @@ class E2E_BRTDP:
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_agent_planners,
-            incomplete_subtasks=incomplete_subtasks,
         )
 
         # Modify the state with other_agent_planners (Level 1 Planning).
         cur_state, other_agent_actions = (
-            self._get_modified_state_with_other_agent_actions(
-                state=self.start, incomplete_subtasks=incomplete_subtasks
-            )
+            self._get_modified_state_with_other_agent_actions(state=self.start)
         )
 
         # BRTDP main loop.
@@ -818,28 +729,21 @@ class E2E_BRTDP:
                     state=cur_state,
                     action=a,
                     value_f=self.v_l,
-                    incomplete_subtasks=incomplete_subtasks,
                 )
                 for a in actions
             ]
         )
         a = actions[action_index]
-        B = sum(
-            self.get_expected_diff(
-                cur_state, a, incomplete_subtasks=incomplete_subtasks
-            ).values()
-        )
-        is_sibling_complete = self.is_sibling_subtasks_complete(
-            self.subtask, incomplete_subtasks
-        )
+        B = sum(self.get_expected_diff(cur_state, a).values())
+
         diff = (
-            self.v_u[(cur_state.get_repr(), self.subtask, is_sibling_complete)]
-            - self.v_l[(cur_state.get_repr(), self.subtask, is_sibling_complete)]
+            self.v_u[(cur_state.get_repr(), self.subtask)]
+            - self.v_l[(cur_state.get_repr(), self.subtask)]
         ) / self.tau
         self.cur_state = cur_state
         if B > diff:
             print("exploring, B: {}, diff: {}".format(B, diff))
-            self.main(incomplete_subtasks)
+            self.main()
 
         # Determine best action after BRTDP.
         if self.is_goal_state(cur_state.get_repr()):
@@ -852,25 +756,18 @@ class E2E_BRTDP:
                     state=cur_state,
                     action=a,
                     value_f=self.v_l,
-                    incomplete_subtasks=incomplete_subtasks,
                 )
                 for a in actions
             ]
-            is_sibling_subtasks_complete = self.is_sibling_subtasks_complete(
-                self.subtask, incomplete_subtasks
-            )
+
             print([x for x in zip(actions, qvals)])
             print(
                 "upper is",
-                self.v_u[
-                    (cur_state.get_repr(), self.subtask, is_sibling_subtasks_complete)
-                ],
+                self.v_u[(cur_state.get_repr(), self.subtask)],
             )
             print(
                 "lower is",
-                self.v_l[
-                    (cur_state.get_repr(), self.subtask, is_sibling_subtasks_complete)
-                ],
+                self.v_l[(cur_state.get_repr(), self.subtask)],
             )
 
             action_index = argmin(np.array(qvals))

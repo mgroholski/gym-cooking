@@ -120,11 +120,17 @@ class RealAgent:
         )
 
         all_subtasks = []
-        for idx, order in enumerate(active_orders):
+        for order in active_orders:
             for subtask in subtasks_by_recipe[order.recipe.name]:
-                subtask = copy.deepcopy(subtask)
-                subtask.order_idx = idx
-                all_subtasks.append(subtask)
+                if any(st.name == subtask.name for st in all_subtasks):
+                    idx = next(
+                        i
+                        for i, st in enumerate(all_subtasks)
+                        if st.name == subtask.name
+                    )
+                    all_subtasks[idx].cnt += 1
+                else:
+                    all_subtasks.append(copy.deepcopy(subtask))
 
         # Uncomment below to view graph for recipe path i
         # i = 0
@@ -154,6 +160,7 @@ class RealAgent:
         """Refresh subtasks---relevant for Bayesian Delegation."""
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
+        completed_subtask = False
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
             self.subtask_complete = self.is_subtask_complete(world)
             print(
@@ -169,25 +176,20 @@ class RealAgent:
             # Refresh for incomplete subtasks.
             if self.subtask_complete:
                 if self.subtask in self.incomplete_subtasks:
-                    self.incomplete_subtasks.remove(self.subtask)
+                    self.remove_subtask(self.subtask)
                     self.subtask_complete = True
+                    completed_subtask = True
         else:
             print("{} has no subtask".format(color(self.name, self.color)))
 
-        if not self.subtask_complete:
+        if not completed_subtask:
             # In a two agent environment, there will only ever be two incomplete_tasks accomplished at any given timestamp.
             # One of these subtasks will be accomplished by this agent and removed earlier within this function.
             # Thus, we can break after one subtask is removed, if any.
             for incomplete_subtask in self.incomplete_subtasks:
                 if self.check_incomplete_subtask(world, incomplete_subtask):
-                    self.incomplete_subtasks.remove(incomplete_subtask)
+                    self.remove_subtask(incomplete_subtask)
                     break
-
-        order_idx_set = set([o.idx for o in world.order_queue])
-
-        for incomplete_subtask in self.incomplete_subtasks:
-            if incomplete_subtask.order_idx not in order_idx_set:
-                self.incomplete_subtasks.remove(incomplete_subtask)
 
         self.world = copy.deepcopy(world)
 
@@ -195,6 +197,14 @@ class RealAgent:
             "{} incomplete subtasks:".format(color(self.name, self.color)),
             ", ".join(str(t) for t in self.incomplete_subtasks),
         )
+
+    def remove_subtask(self, subtask):
+        new_subtask = copy.deepcopy(subtask)
+        self.incomplete_subtasks.remove(subtask)
+        if subtask.cnt > 1:
+            new_subtask = copy.deepcopy(subtask)
+            new_subtask.cnt -= 1
+            self.incomplete_subtasks.append(new_subtask)
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
@@ -218,6 +228,7 @@ class RealAgent:
                     incomplete_subtasks=self.incomplete_subtasks,
                     priors_type=self.priors,
                 )
+
             else:
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
@@ -284,7 +295,6 @@ class RealAgent:
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
                 other_agent_planners=other_agent_planners,
-                incomplete_subtasks=tuple(self.incomplete_subtasks),
             )
 
             # If joint subtask, pick your part of the simulated joint plan.

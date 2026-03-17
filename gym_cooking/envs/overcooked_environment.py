@@ -122,9 +122,8 @@ class OvercookedEnvironment(gym.Env):
             - Order Queue
                 TODO
         """
+        env_copy = copy.copy(self)
         if self.arglist.partially_observable:
-            env_copy = copy.deepcopy(self)
-
             # Obfuscates the world
             observable_col_rng = self.sim_agents[agent_idx].observable_cols
 
@@ -138,7 +137,7 @@ class OvercookedEnvironment(gym.Env):
                 ]
 
         else:
-            return self
+            return env_copy
 
     def load_level(self, level, num_agents):
         x = 0
@@ -334,11 +333,17 @@ class OvercookedEnvironment(gym.Env):
         )
 
         all_subtasks = []
-        for idx, order in enumerate(active_orders):
+        for order in active_orders:
             for subtask in subtasks_by_recipe[order.recipe.name]:
-                subtask = copy.deepcopy(subtask)
-                subtask.order_idx = idx
-                all_subtasks.append(subtask)
+                if any(st.name == subtask.name for st in all_subtasks):
+                    idx = next(
+                        i
+                        for i, st in enumerate(all_subtasks)
+                        if st.name == subtask.name
+                    )
+                    all_subtasks[idx].cnt += 1
+                else:
+                    all_subtasks.append(copy.deepcopy(subtask))
 
         print("All Subtasks:", all_subtasks, "\n")
         return all_subtasks
