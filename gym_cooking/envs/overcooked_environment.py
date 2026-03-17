@@ -271,7 +271,7 @@ class OvercookedEnvironment(gym.Env):
             return True
 
         # Done if all orders in the queue have been delivered.
-        if not len(self.order_queue):
+        if not len(self.order_queue) and not len(self.hidden_order_queue):
             self.termination_info = "Terminating because all orders were delivered"
             self.successful = True
             return True
@@ -357,9 +357,13 @@ class OvercookedEnvironment(gym.Env):
             ]
 
         print("Order Queue: ", [r.get_repr() for r in self.hidden_order_queue])
-        self.order_queue = []
-        if len(self.hidden_order_queue):
-            self.add_order_to_queue()
+
+        if self.arglist.play:
+            self.order_queue = self.hidden_order_queue
+        else:
+            self.order_queue = []
+            if len(self.hidden_order_queue):
+                self.add_order_to_queue()
 
         self.world.order_queue = copy.deepcopy(self.order_queue)
 
@@ -621,6 +625,12 @@ class OvercookedEnvironment(gym.Env):
 
                     self.world.delivered_dishes = []
                     self.world.order_queue = self.order_queue
+
+        new_order_prob = self.arglist.r
+        if len(self.hidden_order_queue) and (
+            (not len(self.order_queue)) or (np.random.random() < new_order_prob)
+        ):
+            self.add_order_to_queue()
 
     def cache_distances(self):
         """Saving distances between world objects."""

@@ -30,7 +30,6 @@ def interact(agent, world):
                 world.process_delivery(obj)
                 agent.release()
                 gs.acquire(obj)
-                # world.remove(obj)
                 print("\nDelivered {}!".format(obj.full_name))
 
         elif isinstance(gs, Trash):

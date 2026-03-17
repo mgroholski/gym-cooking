@@ -52,6 +52,13 @@ def parse_arguments():
         help="Number of orders to place in the queue at reset",
     )
 
+    parser.add_argument(
+        "-r",
+        type=float,
+        default=0.05,
+        help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
+    )
+
     # Delegation Planner
     parser.add_argument(
         "--beta",
