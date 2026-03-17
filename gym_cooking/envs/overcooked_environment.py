@@ -362,7 +362,7 @@ class OvercookedEnvironment(gym.Env):
 
         print("Order Queue: ", [r.get_repr() for r in self.hidden_order_queue])
 
-        if self.arglist.play:
+        if self.arglist.play or not self.arglist.partially_observable:
             self.order_queue = self.hidden_order_queue
         else:
             self.order_queue = []
