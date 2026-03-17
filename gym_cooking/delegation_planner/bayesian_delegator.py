@@ -128,7 +128,9 @@ class BayesianDelegator(Delegator):
             subtask_agent_names=subtask_agent_names,
             other_agent_planners={},
         )
-        value = self.planner.v_l[(self.planner.cur_state.get_repr(), subtask)]
+        value = self.planner.v_l[
+            (self.planner.cur_state.get_repr(), subtask.get_cnt_str())
+        ]
 
         if value == 0:
             breakpoint()

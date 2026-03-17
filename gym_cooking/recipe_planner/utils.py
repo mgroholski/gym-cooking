@@ -85,6 +85,9 @@ class Action:
     def __repr__(self):
         return self.__str__()
 
+    def get_cnt_str(self):
+        return "{}_{}({})".format(self.name, self.cnt, ", ".join(self.args))
+
     def set_specs(self):
         self.specs = "\n{}({})\n".format(self.name, ", ".join(self.args))
         pre_groups = self._get_pre_groups()
@@ -108,14 +111,37 @@ class Action:
     def __eq__(self, other):
         if other is None:
             return False
-        return (
-            (self.name == other.name)
-            and (self.cnt == other.cnt)
-            and (self.args == other.args)
-        )
+        return (self.name == other.name) and (self.args == other.args)
 
     def __hash__(self):
-        return hash((self.name, self.args, self.cnt))
+        return hash((self.name, self.args))
+
+    def __copy__(self):
+        new = type(self).__new__(type(self))
+        new.name = self.name
+        new.args = copy.copy(self.args)
+        new.pre_default = copy.copy(self.pre_default)
+        new.post_add_default = copy.copy(self.post_add_default)
+        new.pre = copy.copy(self.pre)
+        new.post_add = copy.copy(self.post_add)
+        new.is_joint = self.is_joint
+        new.cnt = self.cnt
+        new.set_specs()
+        return new
+
+    def __deepcopy__(self, memo):
+        new = type(self).__new__(type(self))
+        memo[id(self)] = new
+        new.name = self.name
+        new.args = copy.deepcopy(self.args, memo)
+        new.pre_default = copy.deepcopy(self.pre_default, memo)
+        new.post_add_default = copy.deepcopy(self.post_add_default, memo)
+        new.pre = copy.deepcopy(self.pre, memo)
+        new.post_add = copy.deepcopy(self.post_add, memo)
+        new.is_joint = self.is_joint
+        new.cnt = self.cnt
+        new.set_specs()
+        return new
 
     def _get_pre_groups(self):
         if self.pre is None:
@@ -179,7 +205,7 @@ Post: Chopped(X), !Fresh(X)
 
 
 class Chop(Action):
-    def __init__(self, obj, pre=None, post_add=None, cnt=0):
+    def __init__(self, obj, pre=None, post_add=None, cnt=1):
         self.args = (obj,)
 
         self.pre_default = [[Fresh(obj)]]
@@ -196,7 +222,7 @@ Post: Cooked(X), !Fresh(X)
 
 
 class Cook(Action):
-    def __init__(self, obj, pre=None, post_add=None, cnt=0):
+    def __init__(self, obj, pre=None, post_add=None, cnt=1):
         self.args = (obj,)
 
         self.pre_default = [[Fresh(obj)]]

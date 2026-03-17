@@ -74,27 +74,6 @@ class OvercookedEnvironment(gym.Env):
                 )
         return new_env
 
-    def __deepcopy__(self, memo):
-        new_env = OvercookedEnvironment(self.arglist)
-        memo[id(self)] = new_env
-        new_env.__dict__ = self.__dict__.copy()
-        new_env.world = copy.deepcopy(self.world)
-        new_env.sim_agents = [copy.deepcopy(a) for a in self.sim_agents]
-        new_env.distances = self.distances
-        new_env.order_queue = copy.deepcopy(self.order_queue, memo)
-
-        # Avoid copying pygame surfaces.
-        if "game" in new_env.__dict__:
-            new_env.game = None
-
-        # Make sure new objects and new agents' holdings have the right pointers.
-        for a in new_env.sim_agents:
-            if a.holding is not None:
-                a.holding = new_env.world.get_object_at(
-                    location=a.location, desired_obj=None, find_held_objects=True
-                )
-        return new_env
-
     def set_filename(self):
         self.filename = "{}_agents{}_seed{}_orders{}".format(
             self.arglist.level,
@@ -122,6 +101,7 @@ class OvercookedEnvironment(gym.Env):
             - Order Queue
                 TODO
         """
+
         env_copy = copy.copy(self)
         if self.arglist.partially_observable:
             # Obfuscates the world
@@ -335,17 +315,21 @@ class OvercookedEnvironment(gym.Env):
         all_subtasks = []
         for order in active_orders:
             for subtask in subtasks_by_recipe[order.recipe.name]:
-                if any(st.name == subtask.name for st in all_subtasks):
+                if any(
+                    st.name == subtask.name and st.args == subtask.args
+                    for st in all_subtasks
+                ):
                     idx = next(
                         i
                         for i, st in enumerate(all_subtasks)
-                        if st.name == subtask.name
+                        if st.name == subtask.name and st.args == subtask.args
                     )
                     all_subtasks[idx].cnt += 1
                 else:
-                    all_subtasks.append(copy.deepcopy(subtask))
+                    all_subtasks.append(subtask)
 
         print("All Subtasks:", all_subtasks, "\n")
+
         return all_subtasks
 
     def initialize_order_queue(self):

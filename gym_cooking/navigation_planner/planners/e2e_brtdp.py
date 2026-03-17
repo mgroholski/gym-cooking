@@ -172,7 +172,8 @@ class E2E_BRTDP:
         counter = 0
         start_repr = self.start.get_repr()
         diff = (
-            self.v_u[(start_repr, self.subtask)] - self.v_l[(start_repr, self.subtask)]
+            self.v_u[(start_repr, self.subtask.get_cnt_str())]
+            - self.v_l[(start_repr, self.subtask.get_cnt_str())]
         )
         print("DIFF AT START: {}".format(diff))
 
@@ -208,7 +209,7 @@ class E2E_BRTDP:
                     for a in actions
                 ]
             )
-            self.v_u[(modified_state_repr, self.subtask)] = new_upper
+            self.v_u[(modified_state_repr, self.subtask.get_cnt_str())] = new_upper
 
             action_index = argmin(
                 [
@@ -227,7 +228,7 @@ class E2E_BRTDP:
                 action=a,
                 value_f=self.v_l,
             )
-            self.v_l[(modified_state_repr, self.subtask)] = new_lower
+            self.v_l[(modified_state_repr, self.subtask.get_cnt_str())] = new_lower
 
             b = self.get_expected_diff(modified_state, a)
             B = sum(b.values())
@@ -235,13 +236,13 @@ class E2E_BRTDP:
                 self.v_u[
                     (
                         start_repr,
-                        self.subtask,
+                        self.subtask.get_cnt_str(),
                     )
                 ]
                 - self.v_l[
                     (
                         start_repr,
-                        self.subtask,
+                        self.subtask.get_cnt_str(),
                     )
                 ]
             ) / self.tau
@@ -265,11 +266,11 @@ class E2E_BRTDP:
             x = traj.pop()
             x_repr = x.get_repr()
             actions = self.get_actions(state_repr=x_repr)
-            self.v_u[(x_repr, self.subtask)] = min(
+            self.v_u[(x_repr, self.subtask.get_cnt_str())] = min(
                 [self.Q(state=x, action=a, value_f=self.v_u) for a in actions]
             )
 
-            self.v_l[(x_repr, self.subtask)] = min(
+            self.v_l[(x_repr, self.subtask.get_cnt_str())] = min(
                 [
                     self.Q(
                         state=x,
@@ -285,16 +286,16 @@ class E2E_BRTDP:
         main_counter = 0
         start_repr = self.start.get_repr()
 
-        upper = self.v_u[(start_repr, self.subtask)]
-        lower = self.v_l[(start_repr, self.subtask)]
+        upper = self.v_u[(start_repr, self.subtask.get_cnt_str())]
+        lower = self.v_l[(start_repr, self.subtask.get_cnt_str())]
         diff = upper - lower
 
         # Run until convergence or until you max out on iteration
         while (diff > self.alpha) and (main_counter < self.main_cap):
             print("\nstarting main loop #", main_counter)
 
-            new_upper = self.v_u[(start_repr, self.subtask)]
-            new_lower = self.v_l[(start_repr, self.subtask)]
+            new_upper = self.v_u[(start_repr, self.subtask.get_cnt_str())]
+            new_lower = self.v_l[(start_repr, self.subtask.get_cnt_str())]
             new_diff = new_upper - new_lower
             if new_diff > diff + 0.01:
                 self.start.update_display()
@@ -518,16 +519,16 @@ class E2E_BRTDP:
         """Initialize value for environment state."""
         # Skip if already initialized.
         es_repr = env_state.get_repr()
-        if (es_repr, self.subtask) in self.v_l and (
+        if (es_repr, self.subtask.get_cnt_str()) in self.v_l and (
             es_repr,
-            self.subtask,
+            self.subtask.get_cnt_str(),
         ) in self.v_u:
             return
 
         # Goal state has value 0.
         if self.is_goal_state(es_repr):
-            self.v_l[(es_repr, self.subtask)] = 0.0
-            self.v_u[(es_repr, self.subtask)] = 0.0
+            self.v_l[(es_repr, self.subtask.get_cnt_str())] = 0.0
+            self.v_u[(es_repr, self.subtask.get_cnt_str())] = 0.0
             return
 
         # Determine lower bound on this environment state.
@@ -547,8 +548,8 @@ class E2E_BRTDP:
             lower, env_state.display(), env_state.print_agents()
         )
 
-        self.v_l[(es_repr, self.subtask)] = lower - 1.09
-        self.v_u[(es_repr, self.subtask)] = (
+        self.v_l[(es_repr, self.subtask.get_cnt_str())] = lower - 1.09
+        self.v_u[(es_repr, self.subtask.get_cnt_str())] = (
             lower * 5 * (self.time_cost + self.action_cost)
         )
 
@@ -573,7 +574,7 @@ class E2E_BRTDP:
         ns_repr = self.repr_init(env_state=next_state)
         self.value_init(env_state=next_state)
 
-        expected_value = 1.0 * value_f[(ns_repr, self.subtask)]
+        expected_value = 1.0 * value_f[(ns_repr, self.subtask.get_cnt_str())]
         return float(cost + expected_value)
 
     def V(self, state, _type):
@@ -628,7 +629,10 @@ class E2E_BRTDP:
         # Get expected diff.
         b = {
             s_repr: 1.0
-            * (self.v_u[(s_repr, self.subtask)] - self.v_l[(s_repr, self.subtask)])
+            * (
+                self.v_u[(s_repr, self.subtask.get_cnt_str())]
+                - self.v_l[(s_repr, self.subtask.get_cnt_str())]
+            )
         }
         return b
 
@@ -737,8 +741,8 @@ class E2E_BRTDP:
         B = sum(self.get_expected_diff(cur_state, a).values())
 
         diff = (
-            self.v_u[(cur_state.get_repr(), self.subtask)]
-            - self.v_l[(cur_state.get_repr(), self.subtask)]
+            self.v_u[(cur_state.get_repr(), self.subtask.get_cnt_str())]
+            - self.v_l[(cur_state.get_repr(), self.subtask.get_cnt_str())]
         ) / self.tau
         self.cur_state = cur_state
         if B > diff:
@@ -763,11 +767,11 @@ class E2E_BRTDP:
             print([x for x in zip(actions, qvals)])
             print(
                 "upper is",
-                self.v_u[(cur_state.get_repr(), self.subtask)],
+                self.v_u[(cur_state.get_repr(), self.subtask.get_cnt_str())],
             )
             print(
                 "lower is",
-                self.v_l[(cur_state.get_repr(), self.subtask)],
+                self.v_l[(cur_state.get_repr(), self.subtask.get_cnt_str())],
             )
 
             action_index = argmin(np.array(qvals))

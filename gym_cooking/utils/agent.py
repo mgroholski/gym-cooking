@@ -44,7 +44,7 @@ class RealAgent:
         self.beta = arglist.beta
         self.none_action_prob = 0.5
 
-        self.world = copy.deepcopy(obs.world)
+        self.world = copy.copy(obs.world)
 
         self.model_type = agent_settings(arglist, name)
         if self.model_type == "up":
@@ -122,15 +122,18 @@ class RealAgent:
         all_subtasks = []
         for order in active_orders:
             for subtask in subtasks_by_recipe[order.recipe.name]:
-                if any(st.name == subtask.name for st in all_subtasks):
+                if any(
+                    st.name == subtask.name and st.args == subtask.args
+                    for st in all_subtasks
+                ):
                     idx = next(
                         i
                         for i, st in enumerate(all_subtasks)
-                        if st.name == subtask.name
+                        if st.name == subtask.name and st.args == subtask.args
                     )
                     all_subtasks[idx].cnt += 1
                 else:
-                    all_subtasks.append(copy.deepcopy(subtask))
+                    all_subtasks.append(subtask)
 
         # Uncomment below to view graph for recipe path i
         # i = 0
@@ -191,7 +194,7 @@ class RealAgent:
                     self.remove_subtask(incomplete_subtask)
                     break
 
-        self.world = copy.deepcopy(world)
+        self.world = copy.copy(world)
 
         print(
             "{} incomplete subtasks:".format(color(self.name, self.color)),
@@ -199,12 +202,10 @@ class RealAgent:
         )
 
     def remove_subtask(self, subtask):
-        new_subtask = copy.deepcopy(subtask)
-        self.incomplete_subtasks.remove(subtask)
         if subtask.cnt > 1:
-            new_subtask = copy.deepcopy(subtask)
-            new_subtask.cnt -= 1
-            self.incomplete_subtasks.append(new_subtask)
+            subtask.cnt -= 1
+        else:
+            self.incomplete_subtasks.remove(subtask)
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
