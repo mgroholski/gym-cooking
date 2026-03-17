@@ -10,6 +10,7 @@ class Order:
     def __init__(self, recipe, idx):
         self.recipe = recipe
         self.idx = idx
+        self.start_t = 0
 
     def get_repr(self):
         return OrderRepr(name=self.recipe.name)

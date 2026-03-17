@@ -82,9 +82,13 @@ def get_single_actions(env, agent):
             # Can move into floors
             if not gs.collidable:
                 actions.append(t)
-            # Can interact with deliveries
+            # Can only deliver valid dishes
             elif isinstance(gs, Delivery):
-                actions.append(t)
+                if agent.holding is not None and any(
+                    order.recipe.full_state_plate_name == agent.holding.full_name
+                    for order in env.world.order_queue
+                ):
+                    actions.append(t)
             # Can interact with others if at least one of me or gs is holding something, or mergeable
             elif gs.holding is None and agent.holding is not None:
                 actions.append(t)

@@ -44,6 +44,7 @@ class OvercookedEnvironment(gym.Env):
         self.termination_info = ""
         self.successful = False
         self.order_queue = []
+        self.hidden_order_queue = []
 
     def get_repr(self):
         return self.world.get_repr() + tuple(
@@ -65,6 +66,7 @@ class OvercookedEnvironment(gym.Env):
         new_env.sim_agents = [copy.copy(a) for a in self.sim_agents]
         new_env.distances = self.distances
         new_env.order_queue = copy.deepcopy(self.order_queue)
+        new_env.hidden_order_queue = copy.deepcopy(self.hidden_order_queue)
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -93,15 +95,6 @@ class OvercookedEnvironment(gym.Env):
         self.filename += model
 
     def get_agent_obs(self, agent_idx):
-        """
-        We'll want to obfuscate any information that the agent does not have visible.
-        This includes:
-            - Out of range columns
-                This is determined by sim_agent.observable_cols
-            - Order Queue
-                TODO
-        """
-
         env_copy = copy.copy(self)
         if self.arglist.partially_observable:
             # Obfuscates the world
@@ -116,15 +109,14 @@ class OvercookedEnvironment(gym.Env):
                     <= observable_col_rng[1]
                 ]
 
-            # Obfuscates the order queue
             """
-            We'll want a portion of the order queue that's observable to every agent.
-
-            I think it might be best to have a impending_order_queue and a order_queue. The code is already set up to look at the order queue and process from
-            it.
-
-            We should generate to hidden_order_queue, place one into order queue, then whenever there's a processed delivery we add one or at each step we choose randomly
-            if we should add one.
+            TODO:
+                1. Create hidden_orders
+                2. Change order generation function to put orders into hidden_orders
+                3. Place a single order into order_queue
+                4. Whenever a delivery is processed, if order_queue length == 0 but hidden_orders > 0, pop a order from hidden_queue and add it to order_queue
+                5. At each timestep, sample a distribution to determine if a new order should become visible
+                    a. We'll want to add a CLI argument to control the probability.
             """
 
         else:
@@ -343,19 +335,32 @@ class OvercookedEnvironment(gym.Env):
 
         return all_subtasks
 
+    def add_order_to_queue(self):
+        if len(self.hidden_order_queue):
+            popped_order = self.hidden_order_queue.pop(0)
+            self.order_queue.append(popped_order)
+            popped_order.start_t = self.t
+            print(
+                f"APPENDING ORDER: Adding {popped_order} to order queue at timestep {self.t}."
+            )
+
     def initialize_order_queue(self):
         self.order_queue_size = int(getattr(self.arglist, "order_queue_size", 1))
         if self.order_queue_size <= 0 or not self.recipes:
-            self.order_queue = []
+            self.hidden_order_queue = []
         else:
             recipe_indices = np.random.choice(
                 len(self.recipes), size=self.order_queue_size, replace=True
             )
-            self.order_queue = [
+            self.hidden_order_queue = [
                 Order(self.recipes[i], idx) for idx, i in enumerate(recipe_indices)
             ]
 
-        print("Order Queue: ", [r.get_repr() for r in self.order_queue])
+        print("Order Queue: ", [r.get_repr() for r in self.hidden_order_queue])
+        self.order_queue = []
+        if len(self.hidden_order_queue):
+            self.add_order_to_queue()
+
         self.world.order_queue = copy.deepcopy(self.order_queue)
 
     def get_AB_locs_given_objs(
