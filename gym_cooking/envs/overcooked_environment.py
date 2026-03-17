@@ -364,6 +364,7 @@ class OvercookedEnvironment(gym.Env):
 
         if self.arglist.play or not self.arglist.partially_observable:
             self.order_queue = self.hidden_order_queue
+            self.hidden_order_queue = []
         else:
             self.order_queue = []
             if len(self.hidden_order_queue):
