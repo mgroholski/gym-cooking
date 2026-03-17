@@ -13,6 +13,7 @@ class SubtaskAllocDistribution:
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
 
         self.probs = {}
+
         if len(subtask_allocs) == 0:
             return
         prior = 1.0 / (len(subtask_allocs))
@@ -77,11 +78,7 @@ class SubtaskAllocDistribution:
         self.probs[tuple(subtask_alloc)] = value
 
     def update(self, subtask_alloc, factor):
-        try:
-            self.probs[tuple(subtask_alloc)] *= factor
-        except Exception as e:
-            print(e)
-            breakpoint()
+        self.probs[tuple(subtask_alloc)] *= factor
 
     def delete(self, subtask_alloc):
         try:

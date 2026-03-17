@@ -47,6 +47,8 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
+        self._last_cnt_signature = None
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -66,14 +68,32 @@ class BayesianDelegator(Delegator):
         if self.probs is None:
             return True
         # Get currently available subtasks.
-        self.incomplete_subtasks = incomplete_subtasks
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         # Compare previously available subtasks with currently available subtasks.
-        return not (
-            len(self.probs.enumerate_subtask_allocs())
-            == len(probs.enumerate_subtask_allocs())
-        )
+        current_signature = self._get_cnt_signature(probs)
+        if self._last_cnt_signature is None:
+            self._last_cnt_signature = self._get_cnt_signature(self.probs)
+
+        return current_signature != self._last_cnt_signature
+
+    def _get_cnt_signature(self, subtask_alloc_probs):
+        signature = []
+        for subtask_alloc in subtask_alloc_probs.enumerate_subtask_allocs():
+            for t in subtask_alloc:
+                if t.subtask is None:
+                    signature.append(("None", None, None, t.subtask_agent_names))
+                else:
+                    signature.append(
+                        (
+                            t.subtask.name,
+                            t.subtask.args,
+                            t.subtask.cnt,
+                            t.subtask_agent_names,
+                        )
+                    )
+        return tuple(sorted(signature))
 
     def get_subtask_alloc_probs(self):
         """Return the appropriate belief distribution (determined by model type) over
@@ -129,7 +149,10 @@ class BayesianDelegator(Delegator):
             other_agent_planners={},
         )
         value = self.planner.v_l[
-            (self.planner.cur_state.get_repr(), subtask.get_cnt_str())
+            (
+                self.planner.cur_state.get_repr(),
+                subtask.get_cnt_str(),
+            )
         ]
 
         if value == 0:
@@ -168,8 +191,8 @@ class BayesianDelegator(Delegator):
     def set_priors(self, obs, incomplete_subtasks, priors_type):
         """Setting the prior probabilities for subtask allocations."""
         print("{} setting priors".format(self.agent_name))
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
-        self.incomplete_subtasks = incomplete_subtasks
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         probs.normalize()
@@ -182,6 +205,7 @@ class BayesianDelegator(Delegator):
 
         self.ensure_at_least_one_subtask()
         self.probs.normalize()
+        self._last_cnt_signature = self._get_cnt_signature(self.probs)
 
     def get_spatial_priors(self, obs, some_probs):
         """Setting prior probabilities w.r.t spatial metrics."""
@@ -191,13 +215,20 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
+                    try:
+                        lb = self.get_lower_bound_for_subtask_alloc(
+                            obs=copy.copy(obs),
+                            subtask=t.subtask,
+                            subtask_agent_names=t.subtask_agent_names,
+                        )
+                        total_weight += 1.0 / float(lb)
+                    except Exception as e:
+                        print(e)
+                        import traceback
 
-                    lb = self.get_lower_bound_for_subtask_alloc(
-                        obs=copy.copy(obs),
-                        subtask=t.subtask,
-                        subtask_agent_names=t.subtask_agent_names,
-                    )
-                    total_weight += 1.0 / float(lb)
+                        traceback.print_exc()
+                        breakpoint()
+                        exit(1)
 
             # Weight by number of nonzero subtasks.
             some_probs.update(
@@ -429,7 +460,7 @@ class BayesianDelegator(Delegator):
         """Return the entire distribution of subtask allocations."""
         subtask_allocs = []
 
-        subtasks = self.incomplete_subtasks
+        subtasks = list(self.incomplete_subtasks)
         # Just one agent: Assign itself to all subtasks.
         if len(self.all_agent_names) == 1:
             for t in subtasks:

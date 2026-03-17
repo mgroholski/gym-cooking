@@ -111,10 +111,14 @@ class Action:
     def __eq__(self, other):
         if other is None:
             return False
-        return (self.name == other.name) and (self.args == other.args)
+        return (
+            (self.name == other.name)
+            and (self.cnt == other.cnt)
+            and (self.args == other.args)
+        )
 
     def __hash__(self):
-        return hash((self.name, self.args))
+        return hash((self.name, self.args, self.cnt))
 
     def __copy__(self):
         new = type(self).__new__(type(self))

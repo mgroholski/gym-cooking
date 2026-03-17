@@ -116,6 +116,17 @@ class OvercookedEnvironment(gym.Env):
                     <= observable_col_rng[1]
                 ]
 
+            # Obfuscates the order queue
+            """
+            We'll want a portion of the order queue that's observable to every agent.
+
+            I think it might be best to have a impending_order_queue and a order_queue. The code is already set up to look at the order queue and process from
+            it.
+
+            We should generate to hidden_order_queue, place one into order queue, then whenever there's a processed delivery we add one or at each step we choose randomly
+            if we should add one.
+            """
+
         else:
             return env_copy
 
