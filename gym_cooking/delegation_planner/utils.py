@@ -78,7 +78,11 @@ class SubtaskAllocDistribution:
         self.probs[tuple(subtask_alloc)] = value
 
     def update(self, subtask_alloc, factor):
-        self.probs[tuple(subtask_alloc)] *= factor
+        try:
+            self.probs[tuple(subtask_alloc)] *= factor
+        except Exception as e:
+            print(e)
+            breakpoint()
 
     def delete(self, subtask_alloc):
         try:

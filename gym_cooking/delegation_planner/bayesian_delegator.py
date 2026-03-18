@@ -47,7 +47,7 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
-        self.incomplete_subtasks = incomplete_subtasks
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -193,7 +193,7 @@ class BayesianDelegator(Delegator):
     def set_priors(self, obs, incomplete_subtasks, priors_type):
         """Setting the prior probabilities for subtask allocations."""
         print("{} setting priors".format(self.agent_name))
-        self.incomplete_subtasks = incomplete_subtasks
+        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
@@ -545,7 +545,7 @@ class BayesianDelegator(Delegator):
         If there are no subtasks, just make an empty distribution and return."""
         subtask_allocs = []
 
-        subtasks = self.incomplete_subtasks + [
+        subtasks = list(self.incomplete_subtasks) + [
             None for _ in range(len(self.all_agent_names) - 1)
         ]
         for p in permutations(subtasks, len(self.all_agent_names)):
