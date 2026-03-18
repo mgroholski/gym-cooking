@@ -76,9 +76,7 @@ class BayesianDelegator(Delegator):
         if self._last_cnt_signature is None:
             self._last_cnt_signature = self._get_cnt_signature(self.probs)
 
-        if current_signature != self._last_cnt_signature:
-            breakpoint()
-
+        print(f"Reseting priors: {current_signature} and {self._last_cnt_signature}")
         return current_signature != self._last_cnt_signature
 
     def _get_cnt_signature(self, subtask_alloc_probs):
@@ -158,9 +156,6 @@ class BayesianDelegator(Delegator):
             )
         ]
 
-        if value == 0:
-            breakpoint()
-
         return value
 
     def prune_subtask_allocs(self, observation, subtask_alloc_probs):
@@ -230,7 +225,6 @@ class BayesianDelegator(Delegator):
                         import traceback
 
                         traceback.print_exc()
-                        breakpoint()
                         exit(1)
 
             # Weight by number of nonzero subtasks.
