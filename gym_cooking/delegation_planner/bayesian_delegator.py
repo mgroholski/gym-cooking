@@ -76,6 +76,9 @@ class BayesianDelegator(Delegator):
         if self._last_cnt_signature is None:
             self._last_cnt_signature = self._get_cnt_signature(self.probs)
 
+        if current_signature != self._last_cnt_signature:
+            breakpoint()
+
         return current_signature != self._last_cnt_signature
 
     def _get_cnt_signature(self, subtask_alloc_probs):
