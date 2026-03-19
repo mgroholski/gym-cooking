@@ -50,6 +50,22 @@ class E2E_B3RTDP:
         raise NotImplementedError()
 
     def main(self, belief):
+        """
+        Before we start implementation, we'll want to determine our implementation of beliefs
+        and determine how the algorithm will work for those.
+
+        Then, we'll need to figure out how to model the beliefs within Bayesian Delegation.
+
+        This function goes:
+
+            1. InitializeCF(convergence_frontier c, beliefs)
+            2. while not TERMINATECF(c)
+            3.  b := SAMPLECF(c)
+            4.  b^3rtdptrial(c)
+            5.  updateCF(c)
+            6. return greedy action
+        """
+
         raise NotImplementedError()
 
     def b3rtdpTrial(self, convergence_frontier, belief):
@@ -61,4 +77,8 @@ class E2E_B3RTDP:
     def sampleCF(self, convergence_frontier):
         raise NotImplementedError()
 
-    def updateCF(self, convergence_frontier)
+    def updateCF(self, convergence_frontier):
+        raise NotImplementedError()
+
+    def get_action(self):
+        raise NotImplementedError()
