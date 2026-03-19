@@ -61,10 +61,15 @@ class Merged(Predicate):
         Predicate.__init__(self, "Merged", (obj,))
 
 
+class Trashed(Predicate):
+    def __init__(self, obj):
+        Predicate.__init__(self, "Trashed", (obj,))
+
+
 # ACTIONS
 # -------------------------------------------------------------
 class Action:
-    def __init__(self, name, pre, post_add):
+    def __init__(self, name, pre, post_add, cnt=1):
         self.name = name
         # pre, post_add, post_delete must be lists of Predicates
         self.pre = self.pre_default if (pre is None) else pre
@@ -72,18 +77,32 @@ class Action:
         # assume just delete all the preconditions
         self.set_specs()
         self.is_joint = False
+        self.cnt = cnt
 
     def __str__(self):
         return "{}({})".format(self.name, ", ".join(self.args))
 
     def __repr__(self):
-        return "{}({})".format(self.name, ", ".join(self.args))
+        return self.__str__()
+
+    def get_cnt_str(self):
+        return "{}_{}({})".format(self.name, self.cnt, ", ".join(self.args))
 
     def set_specs(self):
         self.specs = "\n{}({})\n".format(self.name, ", ".join(self.args))
-        self.specs += "Preconditions: {}\n".format(
-            ", ".join([str(_) for _ in self.pre])
-        )
+        pre_groups = self._get_pre_groups()
+        if pre_groups:
+            pre_str = " AND ".join(
+                [
+                    "(" + " OR ".join([str(p) for p in group]) + ")"
+                    if len(group) > 1
+                    else str(group[0])
+                    for group in pre_groups
+                ]
+            )
+        else:
+            pre_str = ""
+        self.specs += "Preconditions: {}\n".format(pre_str)
         post = ", ".join(
             [str(_) for _ in self.post_add]
         )  # + ', !'.join([''] + [str(_) for _ in self.post_delete])
@@ -97,21 +116,67 @@ class Action:
     def __hash__(self):
         return hash((self.name, self.args))
 
+    def __copy__(self):
+        new = type(self).__new__(type(self))
+        new.name = self.name
+        new.args = copy.copy(self.args)
+        new.pre_default = copy.copy(self.pre_default)
+        new.post_add_default = copy.copy(self.post_add_default)
+        new.pre = copy.copy(self.pre)
+        new.post_add = copy.copy(self.post_add)
+        new.is_joint = self.is_joint
+        new.cnt = self.cnt
+        new.set_specs()
+        return new
+
+    def __deepcopy__(self, memo):
+        new = type(self).__new__(type(self))
+        memo[id(self)] = new
+        new.name = self.name
+        new.args = copy.deepcopy(self.args, memo)
+        new.pre_default = copy.deepcopy(self.pre_default, memo)
+        new.post_add_default = copy.deepcopy(self.post_add_default, memo)
+        new.pre = copy.deepcopy(self.pre, memo)
+        new.post_add = copy.deepcopy(self.post_add, memo)
+        new.is_joint = self.is_joint
+        new.cnt = self.cnt
+        new.set_specs()
+        return new
+
+    def _get_pre_groups(self):
+        if self.pre is None:
+            return []
+        has_groups = any(isinstance(p, (list, tuple, set)) for p in self.pre)
+        if has_groups:
+            groups = []
+            for item in self.pre:
+                if isinstance(item, (list, tuple, set)):
+                    groups.append(list(item))
+                else:
+                    groups.append([item])
+            return groups
+        return [list(self.pre)]
+
+    def iter_preconditions(self):
+        return [p for group in self._get_pre_groups() for p in group]
+
     def is_valid_in(self, state):
-        temp_state = copy.copy(state)
-        for pre in self.pre:
-            try:
-                temp_state.delete_predicate(pre)
-            except:
-                return False
-        return True
+        pre_groups = self._get_pre_groups()
+        if not pre_groups:
+            return True
+        return any(all(state.contains(p) for p in group) for group in pre_groups)
 
     def get_next_from(self, state):
         next_state = copy.copy(state)
-        for predicate in self.pre:
-            next_state.delete_predicate(predicate)  # remove first instance
-        for predicate in self.post_add:
-            next_state.add_predicate(predicate)
+        for group in self._get_pre_groups():
+            if all(state.contains(p) for p in group):
+                for predicate in group:
+                    next_state.delete_predicate(predicate)  # remove first instance
+
+                for predicate in self.post_add:
+                    next_state.add_predicate(predicate)
+                break
+
         return next_state
 
 
@@ -123,13 +188,13 @@ Post: Fresh(X)
 
 
 class Get(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, cnt=1):
         self.args = (obj,)  # ('Tomato')
 
-        self.pre_default = [NoPredicate()]
+        self.pre_default = [[NoPredicate()]]
         self.post_add_default = [Fresh(obj), NoPredicate()]
 
-        Action.__init__(self, "Get", pre, post_add)
+        Action.__init__(self, "Get", pre, post_add, cnt)
 
 
 """
@@ -140,13 +205,13 @@ Post: Chopped(X), !Fresh(X)
 
 
 class Chop(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, cnt=1):
         self.args = (obj,)
 
-        self.pre_default = [Fresh(obj)]
+        self.pre_default = [[Fresh(obj)]]
         self.post_add_default = [Chopped(obj)]
 
-        Action.__init__(self, "Chop", pre, post_add)
+        Action.__init__(self, "Chop", pre, post_add, cnt)
 
 
 """
@@ -157,13 +222,13 @@ Post: Cooked(X), !Fresh(X)
 
 
 class Cook(Action):
-    def __init__(self, obj, pre=None, post_add=None):
+    def __init__(self, obj, pre=None, post_add=None, cnt=1):
         self.args = (obj,)
 
-        self.pre_default = [Fresh(obj)]
+        self.pre_default = [[Fresh(obj)]]
         self.post_add_default = [Cooked(obj)]
 
-        Action.__init__(self, "Cook", pre, post_add)
+        Action.__init__(self, "Cook", pre, post_add, cnt)
 
 
 """
@@ -174,18 +239,17 @@ Post: Merged(X-Y), !SomeState(X), !SomeState(Y)
 
 
 class Merge(Action):
-    def __init__(self, arg1, arg2, pre=None, post_add=None):
+    def __init__(self, arg1, arg2, pre=None, post_add=None, cnt=1):
         self.args = (arg1, arg2)
         # self.args = tuple(sorted([arg1, arg2]))
         # sorted because it doesn't matter order of merging
 
-        self.pre_default = [Chopped(arg1), Merged(arg2)]
-        # self.pre_default = [Cooked(arg1), Merged(arg2)]
+        self.pre_default = [[Chopped(arg1), Cooked(arg1)], [Merged(arg2)]]
         self.post_add_default = [
             Merged("-".join(sorted(arg1.split("-") + arg2.split("-"))))
         ]
 
-        Action.__init__(self, "Merge", pre, post_add)
+        Action.__init__(self, "Merge", pre, post_add, cnt)
 
 
 """
@@ -196,11 +260,26 @@ Post: Delivered(X), !Plated(X)
 
 
 class Deliver(Action):
+    def __init__(self, obj, pre=None, post_add=None, cnt=1):
+        self.args = (obj,)
+        self.pre_default = [[Merged(obj)]]
+        self.post_add_default = [Delivered(obj)]
+        Action.__init__(self, "Deliver", pre, post_add, cnt)
+
+
+"""
+Trash(X)
+Pre: Fresh(X), Chopped(obj), Cooked(obj), Merged(obj)
+Post: Trashed(X)
+"""
+
+
+class Trash(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
-        self.pre_default = [Merged(obj)]
-        self.post_add_default = [Delivered(obj)]
-        Action.__init__(self, "Deliver", pre, post_add)
+        self.pre_default = [NoPredicate()]
+        self.post_add_default = [Trashed(obj)]
+        Action.__init__(self, "Trash", pre, post_add)
 
 
 # STRIPSSTATE
@@ -263,7 +342,7 @@ def make_predicate_graph(initial, action_path, draw=True):
         for post_add in action.post_add:
             g.add_node(post_add)  # , label=str(post_add))
             node_labels[post_add] = str(post_add)
-            for pre in action.pre:
+            for pre in action.iter_preconditions():
                 # prevent self loops on pots and None
                 if (pre != post_add) and (post_add != Fresh("Pot")):
                     g.add_edge(pre, post_add)  # , label=action['str_name'])
@@ -290,7 +369,7 @@ def make_action_graph(initial, action_path, draw=True):
         # search for nodes whose postconditions match this nodes preconditions
         for other_action in g:  # other_action is a node
             for p in other_action.post_add:
-                if p in action.pre and p != NoPredicate():
+                if p in action.iter_preconditions() and p != NoPredicate():
                     g.add_edge(other_action, action, obj=p)
                     edge_labels[(other_action, action)] = str(p)
     action_graph = make_graph(g, node_labels, edge_labels, draw)
@@ -325,10 +404,7 @@ def get_layers(recipe_tasks, initial):
     for t in recipe_tasks:
         if t.is_valid_in(initial):
             free_tasks.append(t)
-            for pre in t.pre:
-                next_initial.delete_predicate(pre)
-            for post in t.post_add:
-                next_initial.add_predicate(post)
+            next_initial = t.get_next_from(next_initial)
         else:
             remaining_tasks.append(t)
 

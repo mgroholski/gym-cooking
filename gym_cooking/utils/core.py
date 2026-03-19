@@ -27,6 +27,7 @@ class Rep:
     PLATE = "p"
     POTATO = "P"
     MEAT_PATTY = "M"
+    TRASH = "T"
 
 
 class GridSquare:
@@ -37,6 +38,7 @@ class GridSquare:
         self.color = "white"
         self.collidable = True  # cannot go through
         self.dynamic = False  # cannot move around
+        self.is_dispenser = False
 
     def __str__(self):
         return color(self.rep, self.color)
@@ -52,12 +54,14 @@ class GridSquare:
         return gs
 
     def acquire(self, obj):
-        obj.location = self.location
-        self.holding = obj
+        if not self.is_dispenser:
+            obj.location = self.location
+            self.holding = obj
 
     def release(self):
         temp = self.holding
-        self.holding = None
+        if not self.is_dispenser:
+            self.holding = None
         return temp
 
 
@@ -137,13 +141,32 @@ class Delivery(GridSquare):
 
     def acquire(self, obj):
         obj.location = self.location
+        obj.is_delivered = True
         self.holding.append(obj)
 
     def release(self):
-        if self.holding:
-            return self.holding.pop()
-        else:
-            return None
+        return None
+
+    def __eq__(self, other):
+        return GridSquare.__eq__(self, other)
+
+    def __hash__(self):
+        return GridSquare.__hash__(self)
+
+
+class Trash(GridSquare):
+    def __init__(self, location):
+
+        GridSquare.__init__(self, "Trash", location)
+        self.rep = Rep.TRASH
+        self.holding = []
+
+    def acquire(self, obj):
+        obj.location = self.location
+        self.holding.append(obj)
+
+    def release(self):
+        return None
 
     def __eq__(self, other):
         return GridSquare.__eq__(self, other)
@@ -168,6 +191,7 @@ class Object:
         self.update_names()
         self.collidable = False
         self.dynamic = False
+        self.is_delivered = False
 
     def __str__(self):
         res = "-".join(
@@ -190,11 +214,22 @@ class Object:
         new = Object(self.location, self.contents[0])
         new.__dict__ = self.__dict__.copy()
         new.contents = [copy.copy(c) for c in self.contents]
+        new.is_delivered = self.is_delivered
+
+        return new
+
+    def __deepcopy__(self, memo):
+        new = Object.__new__(Object)
+        memo[id(self)] = new
+        for k, v in self.__dict__.items():
+            setattr(new, k, copy.deepcopy(v, memo))
         return new
 
     def get_repr(self):
         return ObjectRepr(
-            name=self.full_name, location=self.location, is_held=self.is_held
+            name=self.full_name,
+            location=self.location,
+            is_held=self.is_held,
         )
 
     def update_names(self):
@@ -220,6 +255,7 @@ class Object:
     def chop(self):
         assert len(self.contents) == 1
         assert self.needs_chopped()
+
         self.contents[0].update_state()
         assert not (self.needs_chopped())
         self.update_names()
@@ -229,7 +265,7 @@ class Object:
             return False
         return self.contents[0].needs_cooked()
 
-    def is_chopped(self):
+    def is_cooked(self):
         for c in self.contents:
             if isinstance(c, Plate) or c.get_state() != "Cooked":
                 return False
@@ -324,6 +360,13 @@ class Food:
 
     def __len__(self):
         return 1  # one food unit
+
+    def __deepcopy__(self, memo):
+        new = type(self).__new__(type(self))
+        memo[id(self)] = new
+        for k, v in self.__dict__.items():
+            setattr(new, k, copy.deepcopy(v, memo))
+        return new
 
     def set_state(self, state):
         assert state in self.state_seq, (
@@ -477,6 +520,9 @@ class Plate:
     def needs_chopped(self):
         return False
 
+    def needs_cooked(self):
+        return False
+
 
 # -----------------------------------------------------------
 # PARSING
@@ -493,4 +539,5 @@ RepToClass = {
     Rep.PLATE: globals()["Plate"],
     Rep.POTATO: globals()["Potato"],
     Rep.MEAT_PATTY: globals()["MeatPatty"],
+    Rep.TRASH: globals()["Trash"],
 }

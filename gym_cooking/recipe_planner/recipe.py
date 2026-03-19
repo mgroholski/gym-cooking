@@ -1,5 +1,19 @@
+from collections import namedtuple
+
 import recipe_planner.utils as recipe
 from utils.core import *
+
+OrderRepr = namedtuple("OrderRepr", "name")
+
+
+class Order:
+    def __init__(self, recipe, idx):
+        self.recipe = recipe
+        self.idx = idx
+        self.start_t = 0
+
+    def get_repr(self):
+        return OrderRepr(name=self.recipe.name)
 
 
 class Recipe:
@@ -8,6 +22,12 @@ class Recipe:
         self.contents = []
         self.actions = set()
         self.actions.add(recipe.Get("Plate"))
+
+    def __eq__(self, other):
+        return self.name == other.name
+
+    def __hash__(self):
+        return object.__hash__(self)
 
     def __str__(self):
         return self.name
@@ -48,6 +68,21 @@ class Recipe:
         self.full_plate_name = "-".join(
             sorted(self.contents_names + ["Plate"])
         )  # string
+
+        self.state_contents_names = [(c.full_name, c.name) for c in self.contents]
+        self.full_state_name = "-".join(
+            [c[0] for c in sorted(self.state_contents_names, key=lambda c: c[1])]
+        )  # string
+
+        self.full_state_plate_name = "-".join(
+            [
+                c[0]
+                for c in sorted(
+                    self.state_contents_names + [("Plate", "Plate")], key=lambda c: c[1]
+                )
+            ]
+        )  # string
+
         self.goal = recipe.Delivered(self.full_plate_name)
         self.actions.add(recipe.Deliver(self.full_plate_name))
 

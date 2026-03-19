@@ -39,6 +39,25 @@ def parse_arguments():
         default=False,
         help="Return observations as images (instead of objects)",
     )
+    parser.add_argument(
+        "--partially-observable",
+        action="store_true",
+        default=False,
+        help="Use partial observability instead of full observability",
+    )
+    parser.add_argument(
+        "--order-queue-size",
+        type=int,
+        default=1,
+        help="Number of orders to place in the queue at reset",
+    )
+
+    parser.add_argument(
+        "-r",
+        type=float,
+        default=0.05,
+        help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
+    )
 
     # Delegation Planner
     parser.add_argument(
@@ -114,7 +133,7 @@ def fix_seed(seed):
     random.seed(seed)
 
 
-def initialize_agents(arglist):
+def initialize_agents(arglist, obs):
     real_agents = []
 
     with open("utils/levels/{}.txt".format(arglist.level), "r") as f:
@@ -138,6 +157,7 @@ def initialize_agents(arglist):
                         name="agent-" + str(len(real_agents) + 1),
                         id_color=COLORS[len(real_agents)],
                         recipes=recipes,
+                        obs=obs.get_agent_obs(len(real_agents)),
                     )
                     real_agents.append(real_agent)
 
@@ -151,7 +171,7 @@ def main_loop(arglist):
     obs = env.reset()
 
     # game = GameVisualize(env)
-    real_agents = initialize_agents(arglist=arglist)
+    real_agents = initialize_agents(arglist=arglist, obs=obs)
 
     # Info bag for saving pkl files
     bag = Bag(arglist=arglist, filename=env.filename)
@@ -160,15 +180,15 @@ def main_loop(arglist):
     while not env.done():
         action_dict = {}
 
-        for agent in real_agents:
-            action = agent.select_action(obs=obs)
+        for idx, agent in enumerate(real_agents):
+            action = agent.select_action(obs=obs.get_agent_obs(idx))
             action_dict[agent.name] = action
 
-        obs, reward, done, info = env.step(action_dict=action_dict)
+        obs, _, _, info = env.step(action_dict=action_dict)
 
         # Agents
-        for agent in real_agents:
-            agent.refresh_subtasks(world=env.world)
+        for idx, agent in enumerate(real_agents):
+            agent.refresh_subtasks(world=obs.get_agent_obs(idx).world)
 
         # Saving info
         bag.add_status(cur_time=info["t"], real_agents=real_agents)

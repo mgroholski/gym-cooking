@@ -15,6 +15,7 @@ StringToGridSquare = {
     "MeatPatty": Counter,
     "CookingPan": CookingPan,
     "Cutboard": Cutboard,
+    "Trash": Trash,
     "Delivery": Delivery,
 }
 
@@ -22,6 +23,8 @@ StringToObject = {
     "Tomato": Tomato,
     "Lettuce": Lettuce,
     "Onion": Onion,
+    "MeatPatty": MeatPatty,
+    "Potato": Potato,
 }
 
 
@@ -79,9 +82,13 @@ def get_single_actions(env, agent):
             # Can move into floors
             if not gs.collidable:
                 actions.append(t)
-            # Can interact with deliveries
+            # Can only deliver valid dishes
             elif isinstance(gs, Delivery):
-                actions.append(t)
+                if agent.holding is not None and any(
+                    order.recipe.full_state_plate_name == agent.holding.full_name
+                    for order in env.world.order_queue
+                ):
+                    actions.append(t)
             # Can interact with others if at least one of me or gs is holding something, or mergeable
             elif gs.holding is None and agent.holding is not None:
                 actions.append(t)
@@ -179,6 +186,10 @@ def get_subtask_action_obj(subtask):
         obj = get_obj(obj_string=subtask.args[0], type_="is_supply", state=None)
     elif isinstance(subtask, recipe.Chop):
         obj = get_obj(obj_string="Cutboard", type_="is_supply", state=None)
+    elif isinstance(subtask, recipe.Cook):
+        obj = get_obj(obj_string="CookingPan", type_="is_supply", state=None)
+    elif isinstance(subtask, recipe.Trash):
+        obj = get_obj(obj_string="Trash", type_="is_supply", state=None)
     elif isinstance(subtask, recipe.Deliver):
         obj = get_obj(obj_string="Delivery", type_="is_supply", state=None)
     elif isinstance(subtask, recipe.Merge):
@@ -202,6 +213,15 @@ def get_subtask_obj(subtask):
         )
         goal_obj = get_obj(
             obj_string=subtask.args[0], type_="is_object", state=FoodState.CHOPPED
+        )
+
+    elif isinstance(subtask, recipe.Cook):
+        # start off raw, get cooked
+        start_obj = get_obj(
+            obj_string=subtask.args[0], type_="is_object", state=FoodState.FRESH
+        )
+        goal_obj = get_obj(
+            obj_string=subtask.args[0], type_="is_object", state=FoodState.COOKED
         )
 
     elif isinstance(subtask, recipe.Merge):
@@ -251,6 +271,19 @@ def get_subtask_obj(subtask):
         )
         start_obj = get_obj(obj_string=subtask.args[0], type_="is_object", state=state)
         goal_obj = copy.copy(start_obj)
+
+    elif isinstance(subtask, recipe.Trash):
+        # object to be trashed (use its latest state)
+        start_obj = get_obj(
+            obj_string=subtask.args[0], type_="is_object", state=FoodState.FRESH
+        )
+        state = (
+            start_obj.contents[0].state_seq[-1]
+            if not isinstance(start_obj.contents[0], Plate)
+            else start_obj.contents[1].state_seq[-1]
+        )
+        start_obj = get_obj(obj_string=subtask.args[0], type_="is_object", state=state)
+        goal_obj = None
 
     elif subtask is None:
         return None, None

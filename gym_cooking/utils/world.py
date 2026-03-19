@@ -1,5 +1,5 @@
 import copy
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, namedtuple
 from functools import lru_cache
 from itertools import combinations, product
 
@@ -9,6 +9,8 @@ import numpy as np
 import recipe_planner.utils as recipe
 from navigation_planner.utils import manhattan_dist
 from utils.core import Counter, GridSquare, Object
+
+OrderQueueRepr = namedtuple("OrderQueueRepr", "order_names")
 
 
 class World:
@@ -20,9 +22,14 @@ class World:
         self.rep = []  # [row0, row1, ..., rown]
         self.arglist = arglist
         self.objects = defaultdict(lambda: [])
+        self.order_queue = []
+        self.delivered_dishes = []
 
     def get_repr(self):
-        return self.get_dynamic_objects()
+        return self.get_dynamic_objects() + self.get_order_queue_repr()
+
+    def get_order_queue_repr(self):
+        return OrderQueueRepr(order_names=tuple(o.get_repr() for o in self.order_queue))
 
     def __str__(self):
         _display = list(map(lambda x: "".join(map(lambda y: y + " ", x)), self.rep))
@@ -32,6 +39,8 @@ class World:
         new = World(self.arglist)
         new.__dict__ = self.__dict__.copy()
         new.objects = copy.deepcopy(self.objects)
+        new.order_queue = copy.deepcopy(self.order_queue)
+        new.delivered_dishes = copy.deepcopy(self.delivered_dishes)
         new.reachability_graph = self.reachability_graph
         new.distances = self.distances
         return new
@@ -183,8 +192,10 @@ class World:
                 min_bound_to_B = min(bound_1_to_B, bound_2_to_B)
 
                 # For chop or deliver, must bring A to B.
-                if isinstance(subtask, recipe.Chop) or isinstance(
-                    subtask, recipe.Deliver
+                if (
+                    isinstance(subtask, recipe.Chop)
+                    or isinstance(subtask, recipe.Cook)
+                    or isinstance(subtask, recipe.Deliver)
                 ):
                     bound = min_bound_to_A + bound_between_agents - 1
                 # For merge, agents can separately go to A and B and then meet in the middle.
@@ -226,9 +237,11 @@ class World:
     def is_occupied(self, location):
         o = list(
             filter(
-                lambda obj: obj.location == location
-                and isinstance(obj, Object)
-                and not (obj.is_held),
+                lambda obj: (
+                    obj.location == location
+                    and isinstance(obj, Object)
+                    and not (obj.is_held)
+                ),
                 self.get_object_list(),
             )
         )
@@ -281,6 +294,7 @@ class World:
                 and key != "Delivery"
                 and key != "Cutboard"
                 and key != "CookingPan"
+                and key != "Trash"
             ):
                 objs.append(tuple(list(map(lambda o: o.get_repr(), self.objects[key]))))
 
@@ -304,6 +318,26 @@ class World:
             )
         )
 
+    def process_delivery(self, obj):
+        self.delivered_dishes.append(obj.full_name)
+
+        if self.arglist.play:
+            # A copy of update_order_queue() from overcooked_environment.py
+            matching_order_idx = next(
+                (
+                    idx
+                    for idx, order in enumerate(self.order_queue)
+                    if order.recipe.full_state_plate_name == obj.full_name
+                ),
+                -1,
+            )
+
+            if matching_order_idx >= 0:
+                removed_dish = self.order_queue.pop(matching_order_idx)
+                print(
+                    f"Delivered {obj.full_name} which was {matching_order_idx}: {removed_dish.recipe.full_state_plate_name}."
+                )
+
     def get_object_locs(self, obj, is_held):
         if obj.name not in self.objects.keys():
             return []
@@ -314,7 +348,9 @@ class World:
                     lambda o: o.location,
                     list(
                         filter(
-                            lambda o: obj == o and o.is_held == is_held,
+                            lambda o: (
+                                obj == o and o.is_held == is_held and not o.is_delivered
+                            ),
                             self.objects[obj.name],
                         )
                     ),
@@ -343,19 +379,23 @@ class World:
         if desired_obj is None:
             objs = list(
                 filter(
-                    lambda obj: obj.location == location
-                    and isinstance(obj, Object)
-                    and obj.is_held is find_held_objects,
+                    lambda obj: (
+                        obj.location == location
+                        and isinstance(obj, Object)
+                        and obj.is_held is find_held_objects
+                    ),
                     all_objs,
                 )
             )
         else:
             objs = list(
                 filter(
-                    lambda obj: obj.name == desired_obj.name
-                    and obj.location == location
-                    and isinstance(obj, Object)
-                    and obj.is_held is find_held_objects,
+                    lambda obj: (
+                        obj.name == desired_obj.name
+                        and obj.location == location
+                        and isinstance(obj, Object)
+                        and obj.is_held is find_held_objects
+                    ),
                     all_objs,
                 )
             )
@@ -364,6 +404,11 @@ class World:
             desired_obj, ",".join(o.get_name() for o in objs), location
         )
 
+        gs = self.get_gridsquare_at(location)
+        if gs.is_dispenser:
+            obj_copy = copy.deepcopy(objs[0])
+            self.insert(obj_copy)
+            return obj_copy
         return objs[0]
 
     def get_gridsquare_at(self, location):

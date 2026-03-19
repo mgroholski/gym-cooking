@@ -1,28 +1,31 @@
+import random
 from collections import namedtuple
+
 import numpy as np
 import scipy as sp
-import random
 from utils.utils import agent_settings
 
 
-class SubtaskAllocDistribution():
+class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
 
     def __init__(self, subtask_allocs):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
+
         self.probs = {}
+
         if len(subtask_allocs) == 0:
             return
-        prior = 1./(len(subtask_allocs))
-        print('set prior', prior)
+        prior = 1.0 / (len(subtask_allocs))
+        print("set prior", prior)
 
         for subtask_alloc in subtask_allocs:
             self.probs[tuple(subtask_alloc)] = prior
 
     def __str__(self):
-        s = ''
+        s = ""
         for subtask_alloc, p in self.probs.items():
-            s += str(subtask_alloc) + ': ' + str(p) + '\n'
+            s += str(subtask_alloc) + ": " + str(p) + "\n"
         return s
 
     def enumerate_subtask_allocs(self):
@@ -37,7 +40,11 @@ class SubtaskAllocDistribution():
     def get_max(self):
         if len(self.probs) > 0:
             max_prob = max(self.probs.values())
-            max_subtask_allocs = [subtask_alloc for subtask_alloc, p in self.probs.items() if p == max_prob]
+            max_subtask_allocs = [
+                subtask_alloc
+                for subtask_alloc, p in self.probs.items()
+                if p == max_prob
+            ]
             return random.choice(max_subtask_allocs)
         return None
 
@@ -77,13 +84,13 @@ class SubtaskAllocDistribution():
         try:
             del self.probs[tuple(subtask_alloc)]
         except:
-            print('subtask_alloc {} not found in probsdict'.format(subtask_alloc))
+            print("subtask_alloc {} not found in probsdict".format(subtask_alloc))
 
     def normalize(self):
         total = sum(self.probs.values())
         for subtask_alloc in self.probs.keys():
             if total == 0:
-                self.probs[subtask_alloc] = 1./len(self.probs)
+                self.probs[subtask_alloc] = 1.0 / len(self.probs)
             else:
-                self.probs[subtask_alloc] *= 1./total
+                self.probs[subtask_alloc] *= 1.0 / total
         return self.probs

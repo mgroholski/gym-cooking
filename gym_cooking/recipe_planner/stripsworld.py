@@ -1,11 +1,22 @@
 import copy
 
+import matplotlib.pyplot as plt
+
 # helpers
 import networkx as nx
 import recipe_planner.utils as recipe
 
 # core modules
 from utils.core import Object
+
+OBJ_NAMES = [
+    "Plate",
+    "Tomato",
+    "Lettuce",
+    "Onion",
+    "MeatPatty",
+    "Potato",
+]
 
 
 class STRIPSWorld:
@@ -17,15 +28,7 @@ class STRIPSWorld:
         self.initial.add_predicate(recipe.NoPredicate())
         for obj in world.get_object_list():
             if isinstance(obj, Object):
-                # TODO: If we're going to add more objects we should get rid of this hardcoded.
-                for obj_name in [
-                    "Plate",
-                    "Tomato",
-                    "Lettuce",
-                    "Onion",
-                    "MeatPatty",
-                    "Potato",
-                ]:
+                for obj_name in OBJ_NAMES:
                     if obj.contains(obj_name):
                         self.initial.add_predicate(recipe.Fresh(obj_name))
 
@@ -33,7 +36,6 @@ class STRIPSWorld:
         all_actions = recipe.actions  # set
         goal_state = None
 
-        # breakpoint()
         new_preds = set()
         graph = nx.DiGraph()
         graph.add_node(self.initial, obj=self.initial)
@@ -43,13 +45,13 @@ class STRIPSWorld:
             # print("CHECKING FRONTIER #:", i)
             for state in frontier:
                 # for each action, check whether from this state
-                for a in all_actions:
-                    if a.is_valid_in(state):
-                        next_state = a.get_next_from(state)
+                for action in all_actions:
+                    if action.is_valid_in(state):
+                        next_state = action.get_next_from(state)
                         for p in next_state.predicates:
                             new_preds.add(str(p))
                         graph.add_node(next_state, obj=next_state)
-                        graph.add_edge(state, next_state, obj=a)
+                        graph.add_edge(state, next_state, obj=action)
 
                         # as soon as goal is found, break and return
                         if self.check_goal(recipe, next_state) and goal_state is None:
@@ -69,10 +71,10 @@ class STRIPSWorld:
         return graph, goal_state
 
     def get_subtasks(self, max_path_length=10, draw_graph=False):
-        action_paths = []
+        action_paths_dict = {}
 
-        for recipe in self.recipes:
-            graph, goal_state = self.generate_graph(recipe, max_path_length)
+        for recipe_obj in self.recipes:
+            graph, goal_state = self.generate_graph(recipe_obj, max_path_length)
 
             if draw_graph:  # not recommended for path length > 4
                 nx.draw(graph, with_labels=True)
@@ -89,9 +91,9 @@ class STRIPSWorld:
                 union_action_path = union_action_path | set(action_path)
 
             # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
-            action_paths.append(union_action_path)
+            action_paths_dict[recipe_obj.name] = union_action_path
 
-        return action_paths
+        return action_paths_dict
 
     def check_goal(self, recipe, state):
         # check if this state satisfies completion of this recipe
