@@ -34,6 +34,12 @@ class RealAgent:
         self.color = id_color
         self.recipes = recipes
 
+        """
+        We'll want to augment our new beliefs in this class (or even include a beliefs object).
+
+        These beliefs will be over the other agent's capabilities and the set of incomplete subtasks.
+        """
+
         # Bayesian Delegation.
         self.reset_subtasks()
         self.new_subtask = None
