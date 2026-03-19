@@ -70,10 +70,12 @@ class RealAgent:
             id_color=self.color,
             recipes=self.recipes,
         )
-        a.subtask = self.subtask
-        a.new_subtask = self.new_subtask
+        a.subtask = copy.deepcopy(self.subtask)
+        a.new_subtask = copy.deepcopy(self.new_subtask)
         a.subtask_agent_names = self.subtask_agent_names
         a.new_subtask_agent_names = self.new_subtask_agent_names
+        if hasattr(self, "incomplete_subtasks"):
+            a.incomplete_subtasks = copy.deepcopy(self.incomplete_subtasks)
         a.__dict__ = self.__dict__.copy()
         if self.holding is not None:
             a.holding = copy.copy(self.holding)

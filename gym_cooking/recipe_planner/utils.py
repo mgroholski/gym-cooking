@@ -116,33 +116,6 @@ class Action:
     def __hash__(self):
         return hash((self.name, self.args))
 
-    def __copy__(self):
-        new = type(self).__new__(type(self))
-        new.name = self.name
-        new.args = copy.copy(self.args)
-        new.pre_default = copy.copy(self.pre_default)
-        new.post_add_default = copy.copy(self.post_add_default)
-        new.pre = copy.copy(self.pre)
-        new.post_add = copy.copy(self.post_add)
-        new.is_joint = self.is_joint
-        new.cnt = self.cnt
-        new.set_specs()
-        return new
-
-    def __deepcopy__(self, memo):
-        new = type(self).__new__(type(self))
-        memo[id(self)] = new
-        new.name = self.name
-        new.args = copy.deepcopy(self.args, memo)
-        new.pre_default = copy.deepcopy(self.pre_default, memo)
-        new.post_add_default = copy.deepcopy(self.post_add_default, memo)
-        new.pre = copy.deepcopy(self.pre, memo)
-        new.post_add = copy.deepcopy(self.post_add, memo)
-        new.is_joint = self.is_joint
-        new.cnt = self.cnt
-        new.set_specs()
-        return new
-
     def _get_pre_groups(self):
         if self.pre is None:
             return []

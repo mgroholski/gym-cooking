@@ -26,5 +26,39 @@ class E2E_B3RTDP:
     Details on this algorithm: https://www.researchgate.net/publication/364689660_B3RTDP_A_Belief_Branch_and_Bound_Real-Time_Dynamic_Programming_Approach_to_Solving_POMDPs
     """
 
-    def __init__(self):
+    def __init__(self, D, alpha, epsilon, beta, tau):
+        """
+        Initializes B3RTDP algorithm with its hyper-parameters.
+        Refer to B3RTDP paper for how these hyper-parameters are used in their algorithm.
+
+        https://www.researchgate.net/publication/364689660_B3RTDP_A_Belief_Branch_and_Bound_Real-Time_Dynamic_Programming_Approach_to_Solving_POMDPs
+
+        Args:
+            D: Belief discretization factor.
+            alpha: Action convergence probability threshold.
+            epsilon: Minimum value gap.
+            beta: Minimum Convergence Frontier probability.
+            tau: Trial termination ratio.
+        """
+
+        self.D = D
+        self.alpha = alpha
+        self.epsilon = epsilon
+        self.beta = beta
+        self.tau = tau
+
         raise NotImplementedError()
+
+    def main(self, belief):
+        raise NotImplementedError()
+
+    def b3rtdpTrial(self, convergence_frontier, belief):
+        raise NotImplementedError()
+
+    def terminateCF(self, convergence_frontier):
+        raise NotImplementedError()
+
+    def sampleCF(self, convergence_frontier):
+        raise NotImplementedError()
+
+    def updateCF(self, convergence_frontier)
