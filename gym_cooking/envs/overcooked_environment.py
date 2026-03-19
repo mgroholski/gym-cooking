@@ -393,7 +393,7 @@ class OvercookedEnvironment(gym.Env):
         # For Merge operator on Cook subtasks, we look at objects that can be
         # cooked and the cooking objects.
         elif isinstance(subtask, recipe.Cook):
-            # A: Object that can be chopped.
+            # A: Object that can be cooked.
             A_locs = self.world.get_object_locs(obj=start_obj, is_held=False) + list(
                 map(
                     lambda a: a.location,
@@ -485,7 +485,8 @@ class OvercookedEnvironment(gym.Env):
                 # Check for whether the agent is holding something.
                 if agent.holding is not None:
                     if isinstance(subtask, recipe.Merge):
-                        continue
+                        if agent.holding not in start_obj and agent.holding != goal_obj:
+                            holding_penalty += 1.0
                     else:
                         if agent.holding != start_obj and agent.holding != goal_obj:
                             # Add one "distance"-unit cost
