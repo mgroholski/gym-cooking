@@ -184,7 +184,7 @@ def main_loop(arglist):
             action = agent.select_action(obs=obs.get_agent_obs(idx))
             action_dict[agent.name] = action
 
-        obs, reward, done, info = env.step(action_dict=action_dict)
+        obs, _, _, info = env.step(action_dict=action_dict)
 
         # Agents
         for idx, agent in enumerate(real_agents):

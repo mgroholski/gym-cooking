@@ -20,13 +20,7 @@ SubtaskAllocation = namedtuple("SubtaskAllocation", "subtask subtask_agent_names
 
 class BayesianDelegator(Delegator):
     def __init__(
-        self,
-        agent_name,
-        all_agent_names,
-        model_type,
-        planner,
-        none_action_prob,
-        incomplete_subtasks,
+        self, agent_name, all_agent_names, model_type, planner, none_action_prob
     ):
         """Initializing Bayesian Delegator for agent_name.
 
@@ -47,7 +41,6 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
-        self.incomplete_subtasks = tuple(incomplete_subtasks)
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -71,34 +64,15 @@ class BayesianDelegator(Delegator):
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
         # Compare previously available subtasks with currently available subtasks.
-        if not (
-            len(self.probs.enumerate_subtask_allocs())
-            == len(probs.enumerate_subtask_allocs())
-        ):
-            print(
-                f"Reseting priors: {self.probs.enumerate_subtask_allocs()} and {probs.enumerate_subtask_allocs()}"
-            )
-        return not (
+        is_reseting_priors = not (
             len(self.probs.enumerate_subtask_allocs())
             == len(probs.enumerate_subtask_allocs())
         )
-
-    def _get_cnt_signature(self, subtask_alloc_probs):
-        signature = []
-        for subtask_alloc in subtask_alloc_probs.enumerate_subtask_allocs():
-            for t in subtask_alloc:
-                if t.subtask is None:
-                    signature.append(("None", None, None, t.subtask_agent_names))
-                else:
-                    signature.append(
-                        (
-                            t.subtask.name,
-                            t.subtask.args,
-                            t.subtask.cnt,
-                            t.subtask_agent_names,
-                        )
-                    )
-        return tuple(sorted(signature))
+        if is_reseting_priors:
+            print(
+                f"Reseting priors: {self.probs.enumerate_subtask_allocs()} and {probs.enumerate_subtask_allocs()}"
+            )
+        return is_reseting_priors
 
     def get_subtask_alloc_probs(self):
         """Return the appropriate belief distribution (determined by model type) over
@@ -193,7 +167,7 @@ class BayesianDelegator(Delegator):
     def set_priors(self, obs, incomplete_subtasks, priors_type):
         """Setting the prior probabilities for subtask allocations."""
         print("{} setting priors".format(self.agent_name))
-        self.incomplete_subtasks = tuple(incomplete_subtasks)
+        self.incomplete_subtasks = incomplete_subtasks
 
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
@@ -207,7 +181,6 @@ class BayesianDelegator(Delegator):
 
         self.ensure_at_least_one_subtask()
         self.probs.normalize()
-        self._last_cnt_signature = self._get_cnt_signature(self.probs)
 
     def get_spatial_priors(self, obs, some_probs):
         """Setting prior probabilities w.r.t spatial metrics."""

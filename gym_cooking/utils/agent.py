@@ -150,7 +150,6 @@ class RealAgent:
             model_type=self.model_type,
             planner=self.planner,
             none_action_prob=self.none_action_prob,
-            incomplete_subtasks=self.incomplete_subtasks,
         )
 
     def reset_subtasks(self):

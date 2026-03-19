@@ -180,7 +180,7 @@ class Trash(GridSquare):
 # -----------------------------------------------------------
 # Objects are wrappers around foods items, plates, and any combination of them
 
-ObjectRepr = namedtuple("ObjectRepr", "name location is_held is_delivered")
+ObjectRepr = namedtuple("ObjectRepr", "name location is_held")
 
 
 class Object:
@@ -214,6 +214,7 @@ class Object:
         new = Object(self.location, self.contents[0])
         new.__dict__ = self.__dict__.copy()
         new.contents = [copy.copy(c) for c in self.contents]
+        new.is_delivered = self.is_delivered
 
         return new
 
@@ -229,7 +230,6 @@ class Object:
             name=self.full_name,
             location=self.location,
             is_held=self.is_held,
-            is_delivered=self.is_delivered,
         )
 
     def update_names(self):

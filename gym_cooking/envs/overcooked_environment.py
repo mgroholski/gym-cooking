@@ -112,17 +112,6 @@ class OvercookedEnvironment(gym.Env):
                     <= objs.location[1]
                     <= observable_col_rng[1]
                 ]
-
-            """
-            TODO:
-                1. Create hidden_orders
-                2. Change order generation function to put orders into hidden_orders
-                3. Place a single order into order_queue
-                4. Whenever a delivery is processed, if order_queue length == 0 but hidden_orders > 0, pop a order from hidden_queue and add it to order_queue
-                5. At each timestep, sample a distribution to determine if a new order should become visible
-                    a. We'll want to add a CLI argument to control the probability.
-            """
-
         else:
             return env_copy
 

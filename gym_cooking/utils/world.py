@@ -348,7 +348,9 @@ class World:
                     lambda o: o.location,
                     list(
                         filter(
-                            lambda o: obj == o and o.is_held == is_held,
+                            lambda o: (
+                                obj == o and o.is_held == is_held and not o.is_delivered
+                            ),
                             self.objects[obj.name],
                         )
                     ),
