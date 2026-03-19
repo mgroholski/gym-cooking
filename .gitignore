@@ -1,4 +1,5 @@
 output/
+pickle/*
 
 # Files
 *.zip
