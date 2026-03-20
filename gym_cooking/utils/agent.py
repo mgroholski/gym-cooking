@@ -1,6 +1,7 @@
 # Recipe planning
 import copy
 from collections import namedtuple
+from typing import Dict
 
 import navigation_planner.utils as nav_utils
 import numpy as np
@@ -34,17 +35,12 @@ class RealAgent:
         self.color = id_color
         self.recipes = recipes
 
-        """
-        We'll want to augment our new beliefs in this class (or even include a beliefs object).
-
-        These beliefs will be over the other agent's capabilities and the set of incomplete subtasks.
-        """
-
         # Bayesian Delegation.
         self.reset_subtasks()
         self.new_subtask = None
         self.new_subtask_agent_names = []
         self.incomplete_subtasks = []
+        self.subtask_to_wrapper_dict = {}
         self.signal_reset_delegator = False
         self.is_subtask_complete = lambda w: False
         self.beta = arglist.beta
@@ -57,6 +53,8 @@ class RealAgent:
             self.priors = "uniform"
         else:
             self.priors = "spatial"
+
+        self.subtask_removed = False
 
         # Navigation planner.
         self.planner = E2E_BRTDP(
@@ -111,7 +109,7 @@ class RealAgent:
         self.plan(copy.copy(obs))
         return self.action
 
-    def get_subtasks(self, world):
+    def get_subtasks(self, world) -> Dict:
         """Return different subtask permutations for active orders."""
 
         active_orders = list(getattr(world, "order_queue", []))
@@ -119,7 +117,7 @@ class RealAgent:
         if active_orders:
             recipes = list(set([o.recipe for o in active_orders]))
         else:
-            return []
+            return {}
 
         self.sw = STRIPSWorld(world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
@@ -127,21 +125,13 @@ class RealAgent:
             max_path_length=self.arglist.max_num_subtasks
         )
 
-        all_subtasks = []
+        all_subtasks = {}
         for order in active_orders:
             for subtask in subtasks_by_recipe[order.recipe.name]:
-                if any(
-                    st.name == subtask.name and st.args == subtask.args
-                    for st in all_subtasks
-                ):
-                    idx = next(
-                        i
-                        for i, st in enumerate(all_subtasks)
-                        if st.name == subtask.name and st.args == subtask.args
-                    )
-                    all_subtasks[idx].cnt += 1
+                if subtask in all_subtasks:
+                    all_subtasks[subtask].cnt += 1
                 else:
-                    all_subtasks.append(subtask)
+                    all_subtasks[subtask] = ActionCntWrapper(subtask)
 
         # Uncomment below to view graph for recipe path i
         # i = 0
@@ -151,7 +141,9 @@ class RealAgent:
 
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
-        self.incomplete_subtasks = self.get_subtasks(env.world)
+        self.subtask_to_wrapper_dict = self.get_subtasks(env.world)
+        self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
+
         self.delegator = BayesianDelegator(
             agent_name=self.name,
             all_agent_names=env.get_agent_names(),
@@ -170,7 +162,6 @@ class RealAgent:
         """Refresh subtasks---relevant for Bayesian Delegation."""
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
-        completed_subtask = False
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
             self.subtask_complete = self.is_subtask_complete(world)
             print(
@@ -188,18 +179,16 @@ class RealAgent:
                 if self.subtask in self.incomplete_subtasks:
                     self.remove_subtask(self.subtask)
                     self.subtask_complete = True
-                    completed_subtask = True
+
         else:
             print("{} has no subtask".format(color(self.name, self.color)))
 
-        if not completed_subtask:
-            # In a two agent environment, there will only ever be two incomplete_tasks accomplished at any given timestamp.
-            # One of these subtasks will be accomplished by this agent and removed earlier within this function.
-            # Thus, we can break after one subtask is removed, if any.
-            for incomplete_subtask in self.incomplete_subtasks:
-                if self.check_incomplete_subtask(world, incomplete_subtask):
-                    self.remove_subtask(incomplete_subtask)
-                    break
+        for incomplete_subtask in self.incomplete_subtasks:
+            if self.check_incomplete_subtask(world, incomplete_subtask) and not (
+                incomplete_subtask == self.subtask and self.subtask_complete
+            ):
+                self.remove_subtask(incomplete_subtask)
+                break
 
         self.world = copy.copy(world)
 
@@ -209,16 +198,22 @@ class RealAgent:
         )
 
     def remove_subtask(self, subtask):
-        if subtask.cnt > 1:
-            subtask.cnt -= 1
+        if (
+            subtask in self.subtask_to_wrapper_dict
+            and self.subtask_to_wrapper_dict[subtask].cnt > 1
+        ):
+            self.subtask_to_wrapper_dict[subtask].cnt -= 1
+            self.delegator.planner.reset_value_caches(subtask)
         else:
+            if subtask in self.subtask_to_wrapper_dict:
+                del self.subtask_to_wrapper_dict[subtask]
             self.incomplete_subtasks.remove(subtask)
+
+        self.subtask_removed = True
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
-        if (
-            self.subtask is not None and self.subtask not in self.incomplete_subtasks
-        ) or (
+        if (self.subtask_removed) or (
             self.delegator.should_reset_priors(
                 obs=copy.copy(env), incomplete_subtasks=self.incomplete_subtasks
             )
@@ -236,13 +231,13 @@ class RealAgent:
                     incomplete_subtasks=self.incomplete_subtasks,
                     priors_type=self.priors,
                 )
-
             else:
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
                     actions_tm1=env.agent_actions,
                     beta=self.beta,
                 )
+        self.subtask_removed = False
 
     def all_done(self):
         """Return whether this agent is all done.

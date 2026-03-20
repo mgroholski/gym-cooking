@@ -68,8 +68,14 @@ class Trashed(Predicate):
 
 # ACTIONS
 # -------------------------------------------------------------
+class ActionCntWrapper:
+    def __init__(self, action, cnt=1):
+        self.action = action
+        self.cnt = cnt
+
+
 class Action:
-    def __init__(self, name, pre, post_add, cnt=1):
+    def __init__(self, name, pre, post_add):
         self.name = name
         # pre, post_add, post_delete must be lists of Predicates
         self.pre = self.pre_default if (pre is None) else pre
@@ -77,7 +83,15 @@ class Action:
         # assume just delete all the preconditions
         self.set_specs()
         self.is_joint = False
-        self.cnt = cnt
+
+        self.cnt = None
+
+    def get_cnt_str(self):
+        return (
+            self.__str__()
+            if self.cnt is None
+            else f"{self.name}_{self.cnt}({', '.join(self.args)})"
+        )
 
     def __str__(self):
         return "{}({})".format(self.name, ", ".join(self.args))
@@ -85,24 +99,11 @@ class Action:
     def __repr__(self):
         return self.__str__()
 
-    def get_cnt_str(self):
-        return "{}_{}({})".format(self.name, self.cnt, ", ".join(self.args))
-
     def set_specs(self):
         self.specs = "\n{}({})\n".format(self.name, ", ".join(self.args))
-        pre_groups = self._get_pre_groups()
-        if pre_groups:
-            pre_str = " AND ".join(
-                [
-                    "(" + " OR ".join([str(p) for p in group]) + ")"
-                    if len(group) > 1
-                    else str(group[0])
-                    for group in pre_groups
-                ]
-            )
-        else:
-            pre_str = ""
-        self.specs += "Preconditions: {}\n".format(pre_str)
+        self.specs += "Preconditions: {}\n".format(
+            ", ".join([str(_) for _ in self.pre])
+        )
         post = ", ".join(
             [str(_) for _ in self.post_add]
         )  # + ', !'.join([''] + [str(_) for _ in self.post_delete])
@@ -116,40 +117,21 @@ class Action:
     def __hash__(self):
         return hash((self.name, self.args))
 
-    def _get_pre_groups(self):
-        if self.pre is None:
-            return []
-        has_groups = any(isinstance(p, (list, tuple, set)) for p in self.pre)
-        if has_groups:
-            groups = []
-            for item in self.pre:
-                if isinstance(item, (list, tuple, set)):
-                    groups.append(list(item))
-                else:
-                    groups.append([item])
-            return groups
-        return [list(self.pre)]
-
-    def iter_preconditions(self):
-        return [p for group in self._get_pre_groups() for p in group]
-
     def is_valid_in(self, state):
-        pre_groups = self._get_pre_groups()
-        if not pre_groups:
-            return True
-        return any(all(state.contains(p) for p in group) for group in pre_groups)
+        temp_state = copy.copy(state)
+        for pre in self.pre:
+            try:
+                temp_state.delete_predicate(pre)
+            except:
+                return False
+        return True
 
     def get_next_from(self, state):
         next_state = copy.copy(state)
-        for group in self._get_pre_groups():
-            if all(state.contains(p) for p in group):
-                for predicate in group:
-                    next_state.delete_predicate(predicate)  # remove first instance
-
-                for predicate in self.post_add:
-                    next_state.add_predicate(predicate)
-                break
-
+        for predicate in self.pre:
+            next_state.delete_predicate(predicate)  # remove first instance
+        for predicate in self.post_add:
+            next_state.add_predicate(predicate)
         return next_state
 
 
@@ -161,13 +143,13 @@ Post: Fresh(X)
 
 
 class Get(Action):
-    def __init__(self, obj, pre=None, post_add=None, cnt=1):
+    def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)  # ('Tomato')
 
-        self.pre_default = [[NoPredicate()]]
+        self.pre_default = [NoPredicate()]
         self.post_add_default = [Fresh(obj), NoPredicate()]
 
-        Action.__init__(self, "Get", pre, post_add, cnt)
+        Action.__init__(self, "Get", pre, post_add)
 
 
 """
@@ -178,13 +160,13 @@ Post: Chopped(X), !Fresh(X)
 
 
 class Chop(Action):
-    def __init__(self, obj, pre=None, post_add=None, cnt=1):
+    def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
 
-        self.pre_default = [[Fresh(obj)]]
+        self.pre_default = [Fresh(obj)]
         self.post_add_default = [Chopped(obj)]
 
-        Action.__init__(self, "Chop", pre, post_add, cnt)
+        Action.__init__(self, "Chop", pre, post_add)
 
 
 """
@@ -195,13 +177,13 @@ Post: Cooked(X), !Fresh(X)
 
 
 class Cook(Action):
-    def __init__(self, obj, pre=None, post_add=None, cnt=1):
+    def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
 
-        self.pre_default = [[Fresh(obj)]]
+        self.pre_default = [Fresh(obj)]
         self.post_add_default = [Cooked(obj)]
 
-        Action.__init__(self, "Cook", pre, post_add, cnt)
+        Action.__init__(self, "Cook", pre, post_add)
 
 
 """
@@ -212,17 +194,17 @@ Post: Merged(X-Y), !SomeState(X), !SomeState(Y)
 
 
 class Merge(Action):
-    def __init__(self, arg1, arg2, pre=None, post_add=None, cnt=1):
+    def __init__(self, arg1, arg2, pre=None, post_add=None):
         self.args = (arg1, arg2)
         # self.args = tuple(sorted([arg1, arg2]))
         # sorted because it doesn't matter order of merging
 
-        self.pre_default = [[Chopped(arg1), Cooked(arg1)], [Merged(arg2)]]
+        self.pre_default = [Chopped(arg1), Merged(arg2)]
         self.post_add_default = [
             Merged("-".join(sorted(arg1.split("-") + arg2.split("-"))))
         ]
 
-        Action.__init__(self, "Merge", pre, post_add, cnt)
+        Action.__init__(self, "Merge", pre, post_add)
 
 
 """
@@ -233,11 +215,11 @@ Post: Delivered(X), !Plated(X)
 
 
 class Deliver(Action):
-    def __init__(self, obj, pre=None, post_add=None, cnt=1):
+    def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)
-        self.pre_default = [[Merged(obj)]]
+        self.pre_default = [Merged(obj)]
         self.post_add_default = [Delivered(obj)]
-        Action.__init__(self, "Deliver", pre, post_add, cnt)
+        Action.__init__(self, "Deliver", pre, post_add)
 
 
 """
