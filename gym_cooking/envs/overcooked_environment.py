@@ -308,23 +308,15 @@ class OvercookedEnvironment(gym.Env):
             max_path_length=self.arglist.max_num_subtasks
         )
 
-        all_subtasks = []
+        all_subtasks = {}
         for order in active_orders:
             for subtask in subtasks_by_recipe[order.recipe.name]:
-                if any(
-                    st.name == subtask.name and st.args == subtask.args
-                    for st in all_subtasks
-                ):
-                    idx = next(
-                        i
-                        for i, st in enumerate(all_subtasks)
-                        if st.name == subtask.name and st.args == subtask.args
-                    )
-                    all_subtasks[idx].cnt += 1
+                if subtask in all_subtasks:
+                    all_subtasks[subtask].cnt += 1
                 else:
-                    all_subtasks.append(subtask)
+                    all_subtasks[subtask] = recipe.ActionCntWrapper(subtask)
 
-        print("All Subtasks:", all_subtasks, "\n")
+        print("All Subtasks:", [k for k in all_subtasks.keys()], "\n")
 
         return all_subtasks
 
@@ -436,6 +428,7 @@ class OvercookedEnvironment(gym.Env):
         # For Merge operator on Merge subtasks, we look at objects that can be
         # combined together. These objects are all ingredient objects (e.g. Tomato, Lettuce).
         elif isinstance(subtask, recipe.Merge):
+            # TODO: Check if correct
             A_locs = self.world.get_object_locs(obj=start_obj[0], is_held=False) + list(
                 map(
                     lambda a: a.location,
@@ -485,8 +478,7 @@ class OvercookedEnvironment(gym.Env):
                 # Check for whether the agent is holding something.
                 if agent.holding is not None:
                     if isinstance(subtask, recipe.Merge):
-                        if agent.holding not in start_obj and agent.holding != goal_obj:
-                            holding_penalty += 1.0
+                        continue
                     else:
                         if agent.holding != start_obj and agent.holding != goal_obj:
                             # Add one "distance"-unit cost

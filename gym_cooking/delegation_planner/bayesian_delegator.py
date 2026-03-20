@@ -68,10 +68,6 @@ class BayesianDelegator(Delegator):
             len(self.probs.enumerate_subtask_allocs())
             == len(probs.enumerate_subtask_allocs())
         )
-        if is_reseting_priors:
-            print(
-                f"Reseting priors: {self.probs.enumerate_subtask_allocs()} and {probs.enumerate_subtask_allocs()}"
-            )
         return is_reseting_priors
 
     def get_subtask_alloc_probs(self):
@@ -130,7 +126,7 @@ class BayesianDelegator(Delegator):
         value = self.planner.v_l[
             (
                 self.planner.cur_state.get_repr(),
-                subtask.get_cnt_str(),
+                subtask,
             )
         ]
 
@@ -202,6 +198,7 @@ class BayesianDelegator(Delegator):
                         import traceback
 
                         traceback.print_exc()
+                        breakpoint()
                         exit(1)
 
             # Weight by number of nonzero subtasks.
@@ -313,6 +310,7 @@ class BayesianDelegator(Delegator):
         action = tuple([actions_tm1[a_name] for a_name in subtask_agent_names])
         if len(subtask_agent_names) == 1:
             action = action[0]
+
         state, other_planners = self.get_appropriate_state_and_other_agent_planners(
             obs_tm1=obs_tm1, backup_subtask=subtask, no_level_1=no_level_1
         )

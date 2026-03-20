@@ -84,11 +84,7 @@ def get_single_actions(env, agent):
                 actions.append(t)
             # Can only deliver valid dishes
             elif isinstance(gs, Delivery):
-                if agent.holding is not None and any(
-                    order.recipe.full_state_plate_name == agent.holding.full_name
-                    for order in env.world.order_queue
-                ):
-                    actions.append(t)
+                actions.append(t)
             # Can interact with others if at least one of me or gs is holding something, or mergeable
             elif gs.holding is None and agent.holding is not None:
                 actions.append(t)

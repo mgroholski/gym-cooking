@@ -87,10 +87,27 @@ class Recipe:
         self.actions.add(recipe.Deliver(self.full_plate_name))
 
     def add_merge_actions(self):
-        for i in range(1, len(self.contents) + 1):
+        for i in range(2, len(self.contents) + 1):
             for combo in combinations(self.contents, i):
-                for idx, new_item in enumerate(combo):
-                    new_item_pred = None
+                # Merge all with plate
+                self.actions.add(
+                    recipe.Merge(
+                        "-".join(sorted([c.name for c in combo])),
+                        "Plate",
+                        [
+                            recipe.Merged("-".join(sorted([c.name for c in combo]))),
+                            recipe.Fresh("Plate"),
+                        ],
+                        None,
+                    )
+                )
+
+                for new_item in combo:
+                    rem = list(combo).copy()
+                    rem.remove(new_item)
+                    rem_str = "-".join(sorted([r.name for r in rem]))
+                    plate_str = "-".join(sorted([new_item.name, "Plate"]))
+                    rem_plate_str = "-".join(sorted([r.name for r in rem] + ["Plate"]))
 
                     if new_item.state_seq == FoodSequence.FRESH_CHOPPED:
                         new_item_pred = recipe.Chopped(new_item.name)
@@ -101,32 +118,61 @@ class Recipe:
                             f"Could not find mergable predicate for {new_item.name}."
                         )
 
-                    if len(combo) == 1:
+                    if len(rem) == 1:
+                        if rem[0].state_seq == FoodSequence.FRESH_CHOPPED:
+                            rem_pred = recipe.Chopped(rem_str)
+                        elif rem[0].state_seq == FoodSequence.FRESH_COOKED:
+                            rem_pred = recipe.Cooked(rem_str)
+                        else:
+                            raise Exception(
+                                f"Could not find mergable predicate for {new_item.name}."
+                            )
+
                         self.actions.add(
                             recipe.Merge(
                                 new_item.name,
-                                "Plate",
-                                [new_item_pred, recipe.Fresh("Plate")],
+                                rem_str,
+                                [new_item_pred, rem_pred],
+                                None,
+                            )
+                        )
+                        self.actions.add(
+                            recipe.Merge(
+                                rem_str,
+                                plate_str,
+                                [rem_pred, recipe.Merged(plate_str)],
+                                None,
+                            )
+                        )
+                        self.actions.add(
+                            recipe.Merge(
+                                new_item.name,
+                                plate_str,
+                                [new_item_pred, recipe.Merged(plate_str)],
                                 None,
                             )
                         )
                     else:
-                        other_ingredients = sorted(
-                            [
-                                ingredient.name
-                                for ingredient in combo[0:idx] + combo[idx + 1 :]
-                            ]
-                            + ["Plate"]
-                        )
-
-                        other_ingredients_name = "-".join(other_ingredients)
-
                         self.actions.add(
                             recipe.Merge(
                                 new_item.name,
-                                other_ingredients_name,
-                                [new_item_pred, recipe.Merged(other_ingredients_name)],
+                                rem_str,
+                                [new_item_pred, recipe.Merged(rem_str)],
+                            )
+                        )
+                        self.actions.add(
+                            recipe.Merge(
+                                plate_str,
+                                rem_str,
+                                [recipe.Merged(plate_str), recipe.Merged(rem_str)],
                                 None,
+                            )
+                        )
+                        self.actions.add(
+                            recipe.Merge(
+                                new_item.name,
+                                rem_plate_str,
+                                [new_item_pred, recipe.Merged(rem_plate_str)],
                             )
                         )
 
