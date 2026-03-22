@@ -103,6 +103,9 @@ class E2E_BRTDP:
             sim_agent.action = action
             interact(agent=sim_agent, world=sim_state.world)
 
+            # if sim_agent.holding is not None:
+            #     breakpoint()
+
         # Joint
         else:
             agent_1, agent_2 = subtask_agents
@@ -431,6 +434,7 @@ class E2E_BRTDP:
                         )
                     )
                 )
+
         else:
             # Get current count of desired objects.
             self.cur_obj_count = len(env.world.get_all_object_locs(self.goal_obj))

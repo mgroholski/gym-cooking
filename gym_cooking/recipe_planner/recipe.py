@@ -3,7 +3,7 @@ from collections import namedtuple
 import recipe_planner.utils as recipe
 from utils.core import *
 
-OrderRepr = namedtuple("OrderRepr", "name")
+OrderRepr = namedtuple("OrderRepr", "name is_complete")
 
 
 class Order:
@@ -11,9 +11,13 @@ class Order:
         self.recipe = recipe
         self.idx = idx
         self.start_t = 0
+        self.is_complete = False
 
     def get_repr(self):
-        return OrderRepr(name=self.recipe.name)
+        return OrderRepr(name=self.recipe.name, is_complete=self.is_complete)
+
+    def complete(self):
+        self.is_complete = True
 
 
 class Recipe:

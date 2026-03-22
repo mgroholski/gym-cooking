@@ -10,7 +10,7 @@ import recipe_planner.utils as recipe
 from navigation_planner.utils import manhattan_dist
 from utils.core import Counter, GridSquare, Object
 
-OrderQueueRepr = namedtuple("OrderQueueRepr", "order_names")
+OrderQueueRepr = namedtuple("OrderQueueRepr", "orders")
 
 
 class World:
@@ -29,7 +29,7 @@ class World:
         return self.get_dynamic_objects() + self.get_order_queue_repr()
 
     def get_order_queue_repr(self):
-        return OrderQueueRepr(order_names=tuple(o.get_repr() for o in self.order_queue))
+        return OrderQueueRepr(orders=tuple(o.get_repr() for o in self.order_queue))
 
     def __str__(self):
         _display = list(map(lambda x: "".join(map(lambda y: y + " ", x)), self.rep))
@@ -113,8 +113,16 @@ class World:
                     # If both collidable, add nothing.
 
         # If you want to visualize this graph, uncomment below.
-        # plt.figure()
-        # nx.draw(self.reachability_graph)
+        # plt.figure(figsize=(10, 8))
+
+        # G = self.reachability_graph
+        # pos = nx.spring_layout(G, k=10.0, iterations=10000, seed=42)
+
+        # nx.draw(G, pos, with_labels=True, node_color="lightblue", edge_color="gray")
+
+        # edge_labels = nx.get_edge_attributes(G, "label")
+        # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+
         # plt.show()
 
     def get_lower_bound_between(self, subtask, agent_locs, A_locs, B_locs):
@@ -294,7 +302,6 @@ class World:
                 and key != "Delivery"
                 and key != "Cutboard"
                 and key != "CookingPan"
-                and key != "Trash"
             ):
                 objs.append(tuple(list(map(lambda o: o.get_repr(), self.objects[key]))))
 
@@ -321,22 +328,21 @@ class World:
     def process_delivery(self, obj):
         self.delivered_dishes.append(obj.full_name)
 
-        if self.arglist.play:
-            # A copy of update_order_queue() from overcooked_environment.py
-            matching_order_idx = next(
-                (
-                    idx
-                    for idx, order in enumerate(self.order_queue)
-                    if order.recipe.full_state_plate_name == obj.full_name
-                ),
-                -1,
-            )
+        matching_order_idx = next(
+            (
+                idx
+                for idx, order in enumerate(self.order_queue)
+                if order.recipe.full_state_plate_name == obj.full_name
+            ),
+            -1,
+        )
 
-            if matching_order_idx >= 0:
-                removed_dish = self.order_queue.pop(matching_order_idx)
-                print(
-                    f"Delivered {obj.full_name} which was {matching_order_idx}: {removed_dish.recipe.full_state_plate_name}."
-                )
+        if matching_order_idx >= 0:
+            completed_dish = self.order_queue[matching_order_idx]
+            completed_dish.complete()
+            print(
+                f"Delivered {obj.full_name} which was {matching_order_idx}: {completed_dish.recipe.full_state_plate_name}."
+            )
 
     def get_object_locs(self, obj, is_held):
         if obj.name not in self.objects.keys():
@@ -348,9 +354,7 @@ class World:
                     lambda o: o.location,
                     list(
                         filter(
-                            lambda o: (
-                                obj == o and o.is_held == is_held and not o.is_delivered
-                            ),
+                            lambda o: obj == o and o.is_held == is_held,
                             self.objects[obj.name],
                         )
                     ),
