@@ -16,6 +16,7 @@ from delegation_planner.bayesian_delegator import BayesianDelegator
 from gym import error, spaces, utils
 from gym.utils import seeding
 from misc.game.gameimage import GameImage
+from pygame.transform import chop
 from recipe_planner.recipe import *
 from recipe_planner.stripsworld import STRIPSWorld
 from utils.agent import COLORS, SimAgent
@@ -113,8 +114,8 @@ class OvercookedEnvironment(gym.Env):
                     <= objs.location[1]
                     <= observable_col_rng[1]
                 ]
-        else:
-            return env_copy
+
+        return env_copy
 
     def load_level(self, level, num_agents):
         x = 0

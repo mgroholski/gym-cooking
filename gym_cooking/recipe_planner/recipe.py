@@ -16,9 +16,6 @@ class Order:
     def get_repr(self):
         return OrderRepr(name=self.recipe.name, is_complete=self.is_complete)
 
-    def complete(self):
-        self.is_complete = True
-
 
 class Recipe:
     def __init__(self, name):
