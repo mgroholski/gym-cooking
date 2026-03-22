@@ -322,24 +322,29 @@ class RealAgent:
         subtask_action_object = nav_utils.get_subtask_action_obj(subtask=subtask)
 
         if isinstance(subtask, Deliver):
+            # Checks count in the stored world.
             cur_obj_count = len(
                 list(
                     filter(
                         lambda o: (
-                            o in set(world.get_all_object_locs(subtask_action_object))
+                            o
+                            in set(
+                                self.world.get_all_object_locs(subtask_action_object)
+                            )
                         ),
-                        world.get_object_locs(obj=goal_obj, is_held=False),
+                        self.world.get_object_locs(obj=goal_obj, is_held=False),
                     )
                 )
             )
 
+            # Check count in the current world.
             new_obj_count = len(
                 list(
                     filter(
                         lambda o: (
                             o in set(world.get_all_object_locs(subtask_action_object))
                         ),
-                        self.world.get_object_locs(obj=goal_obj, is_held=False),
+                        world.get_object_locs(obj=goal_obj, is_held=False),
                     )
                 )
             )

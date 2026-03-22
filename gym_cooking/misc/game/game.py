@@ -91,7 +91,10 @@ class Game:
             order_x = idx * self.scale + x_offset
             order_location = (order_x, order_row_y)
             fill = pygame.Rect(order_x, order_row_y, self.scale, self.scale)
-            pygame.draw.rect(self.screen, Color.WHITE, fill)
+            bg_color = Color.WHITE
+            if order.is_complete:
+                bg_color = Color.DELIVERY
+            pygame.draw.rect(self.screen, bg_color, fill)
             pygame.draw.rect(self.screen, Color.COUNTER_BORDER, fill, 1)
 
             self.draw(order_name, self.tile_size, order_location)
