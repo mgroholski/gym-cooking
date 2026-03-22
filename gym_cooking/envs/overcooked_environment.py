@@ -67,6 +67,7 @@ class OvercookedEnvironment(gym.Env):
         new_env.distances = self.distances
         new_env.order_queue = copy.deepcopy(self.order_queue)
         new_env.hidden_order_queue = copy.deepcopy(self.hidden_order_queue)
+        new_env.world.order_queue = new_env.order_queue
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -142,11 +143,9 @@ class OvercookedEnvironment(gym.Env):
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
-
                             self.world.objects.setdefault(newobj.name, []).append(
                                 newobj
                             )
-
                         else:
                             # Empty. Set a Floor tile.
                             f = Floor(location=(x, y))
@@ -264,7 +263,9 @@ class OvercookedEnvironment(gym.Env):
             return True
 
         # Done if all orders in the queue have been delivered.
-        if not len(self.order_queue) and not len(self.hidden_order_queue):
+        if all([o.is_complete for o in self.order_queue]) and not len(
+            self.hidden_order_queue
+        ):
             self.termination_info = "Terminating because all orders were delivered"
             self.successful = True
             return True
@@ -351,7 +352,7 @@ class OvercookedEnvironment(gym.Env):
             if len(self.hidden_order_queue):
                 self.add_order_to_queue()
 
-        self.world.order_queue = copy.deepcopy(self.order_queue)
+        self.world.order_queue = self.order_queue
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
@@ -428,7 +429,6 @@ class OvercookedEnvironment(gym.Env):
         # For Merge operator on Merge subtasks, we look at objects that can be
         # combined together. These objects are all ingredient objects (e.g. Tomato, Lettuce).
         elif isinstance(subtask, recipe.Merge):
-            # TODO: Check if correct
             A_locs = self.world.get_object_locs(obj=start_obj[0], is_held=False) + list(
                 map(
                     lambda a: a.location,
@@ -473,18 +473,20 @@ class OvercookedEnvironment(gym.Env):
 
         # Calculate extra holding penalty if the object is irrelevant.
         holding_penalty = 0.0
+        HOLDING_PENALTY = 2.0
         for agent in self.sim_agents:
             if agent.name in subtask_agent_names:
                 # Check for whether the agent is holding something.
                 if agent.holding is not None:
                     if isinstance(subtask, recipe.Merge):
-                        continue
+                        if agent.holding not in start_obj and agent.holding != goal_obj:
+                            holding_penalty += HOLDING_PENALTY
                     else:
                         if agent.holding != start_obj and agent.holding != goal_obj:
                             # Add one "distance"-unit cost
-                            holding_penalty += 1.0
+                            holding_penalty += HOLDING_PENALTY
         # Account for two-agents where we DON'T want to overpenalize.
-        holding_penalty = min(holding_penalty, 1)
+        holding_penalty = min(holding_penalty, HOLDING_PENALTY)
 
         # Get current agent locations.
         agent_locs = [
@@ -593,31 +595,12 @@ class OvercookedEnvironment(gym.Env):
             self.agent_actions[agent.name] = agent.action
 
     def update_order_queue(self):
-        if len(self.world.delivered_dishes):
-            for delivered_dish in self.world.delivered_dishes:
-                matching_order_idx = next(
-                    (
-                        idx
-                        for idx, order in enumerate(self.order_queue)
-                        if order.recipe.full_state_plate_name == delivered_dish
-                    ),
-                    -1,
-                )
-
-                if matching_order_idx >= 0:
-                    removed_dish = self.order_queue.pop(matching_order_idx)
-                    print(
-                        f"Delivered {delivered_dish} which was {matching_order_idx}: {removed_dish.recipe.full_name}."
-                    )
-
-                    self.world.delivered_dishes = []
-                    self.world.order_queue = self.order_queue
-
-        new_order_prob = self.arglist.r
-        if len(self.hidden_order_queue) and (
-            (not len(self.order_queue)) or (np.random.random() < new_order_prob)
-        ):
-            self.add_order_to_queue()
+        if self.arglist.partially_observable:
+            new_order_prob = self.arglist.r
+            if len(self.hidden_order_queue) and (
+                (not len(self.order_queue)) or (np.random.random() < new_order_prob)
+            ):
+                self.add_order_to_queue()
 
     def cache_distances(self):
         """Saving distances between world objects."""

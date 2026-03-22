@@ -27,15 +27,15 @@ def interact(agent, world):
         if isinstance(gs, Delivery):
             obj = agent.holding
             if obj.is_deliverable():
-                world.process_delivery(obj)
-                agent.release()
-                gs.acquire(obj)
-                print("\nDelivered {}!".format(obj.full_name))
+                """
+                The goal state and subtask completion is measured by another object
+                being at the delivered location than the state before.
 
-        elif isinstance(gs, Trash):
-            obj = agent.holding
-            agent.release()
-            gs.acquire(obj)
+                """
+                gs.acquire(obj)
+                agent.release()
+                world.process_delivery(obj)
+                print("\nDelivered {}!".format(obj.full_name))
 
         # if occupied gridsquare in front --> try merging
         elif world.is_occupied(gs.location):
