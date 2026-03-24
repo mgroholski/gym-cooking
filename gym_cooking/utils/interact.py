@@ -35,6 +35,7 @@ def interact(agent, world):
                 gs.acquire(obj)
                 agent.release()
                 world.process_delivery(obj)
+
                 print("\nDelivered {}!".format(obj.full_name))
 
         # if occupied gridsquare in front --> try merging

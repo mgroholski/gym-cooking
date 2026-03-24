@@ -128,8 +128,18 @@ class Game:
 
     def draw(self, path, size, location):
         image_path = "{}/{}.png".format(graphics_dir, path)
-        image = pygame.transform.scale(get_image(image_path), size)
-        self.screen.blit(image, location)
+        if os.path.exists(image_path):
+            image = pygame.transform.scale(get_image(image_path), size)
+            self.screen.blit(image, location)
+            return
+
+        for part in path.split("-"):
+            if not part:
+                continue
+            part_path = "{}/{}.png".format(graphics_dir, part)
+            if os.path.exists(part_path):
+                image = pygame.transform.scale(get_image(part_path), size)
+                self.screen.blit(image, location)
 
     def draw_agent(self, agent):
         self.draw(

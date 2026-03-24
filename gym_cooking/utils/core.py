@@ -144,6 +144,10 @@ class Delivery(GridSquare):
         self.holding.append(obj)
 
     def release(self):
+        for idx, obj in enumerate(self.holding):
+            if not obj.is_delivered:
+                return self.holding.pop(idx)
+
         return None
 
     def __eq__(self, other):
@@ -158,7 +162,7 @@ class Delivery(GridSquare):
 # -----------------------------------------------------------
 # Objects are wrappers around foods items, plates, and any combination of them
 
-ObjectRepr = namedtuple("ObjectRepr", "name location is_held")
+ObjectRepr = namedtuple("ObjectRepr", "name location is_held is_delivered")
 
 
 class Object:
@@ -169,6 +173,7 @@ class Object:
         self.update_names()
         self.collidable = False
         self.dynamic = False
+        self.is_delivered = False
 
     def __str__(self):
         res = "-".join(
@@ -198,6 +203,7 @@ class Object:
             name=self.full_name,
             location=self.location,
             is_held=self.is_held,
+            is_delivered=self.is_delivered,
         )
 
     def update_names(self):

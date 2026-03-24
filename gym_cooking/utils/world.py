@@ -337,9 +337,14 @@ class World:
         if matching_order_idx >= 0:
             completed_dish = self.order_queue[matching_order_idx]
             completed_dish.is_complete = True
+            obj.is_delivered = True
             print(
                 f"Delivered {obj.full_name} which was {matching_order_idx}: {completed_dish.recipe.full_state_plate_name}."
             )
+
+            return True
+
+        return False
 
     def get_object_locs(self, obj, is_held):
         if obj.name not in self.objects.keys():
