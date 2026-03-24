@@ -26,6 +26,7 @@ class STRIPSWorld:
 
         # set initial state
         self.initial.add_predicate(recipe.NoPredicate())
+
         for obj in world.get_object_list():
             if isinstance(obj, Object):
                 for obj_name in OBJ_NAMES:
@@ -89,7 +90,6 @@ class STRIPSWorld:
                     for i in range(len(state_path) - 1)
                 ]
                 union_action_path = union_action_path | set(action_path)
-
             # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
             action_paths_dict[recipe_obj.name] = union_action_path
 

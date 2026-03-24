@@ -111,9 +111,17 @@ class OvercookedEnvironment(gym.Env):
                     objs
                     for objs in obj_list
                     if observable_col_rng[0]
-                    <= objs.location[1]
+                    <= objs.location[0]
                     <= observable_col_rng[1]
                 ]
+
+            env_copy.sim_agents = [
+                sim_agent
+                for sim_agent in env_copy.sim_agents
+                if observable_col_rng[0]
+                <= sim_agent.location[0]
+                <= observable_col_rng[1]
+            ]
 
         return env_copy
 
@@ -124,6 +132,7 @@ class OvercookedEnvironment(gym.Env):
         with open("utils/levels/{}.txt".format(level), "r") as file:
             # Mark the phases of reading.
             phase = 1
+            agent_idx = 0
             for line in file:
                 line = line.strip("\n")
                 if line == "":
@@ -166,6 +175,15 @@ class OvercookedEnvironment(gym.Env):
                             location=(int(loc[0]), int(loc[1])),
                         )
                         self.sim_agents.append(sim_agent)
+
+                elif phase == 4:
+                    if agent_idx < len(self.sim_agents):
+                        col_rng = line.split(" ")
+                        self.sim_agents[agent_idx].observable_cols = (
+                            int(col_rng[0]),
+                            int(col_rng[1]),
+                        )
+                    agent_idx += 1
 
         self.distances = {}
         self.world.width = x + 1

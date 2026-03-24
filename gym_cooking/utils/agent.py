@@ -179,6 +179,33 @@ class RealAgent:
 
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
+        # Checks if the task queue has changed.
+        if len(self.world.order_queue) != len(world.order_queue):
+            """
+            Get sub-tasks from new_orders then increment or add to the incomplete subtask
+            list.
+            """
+            new_orders = world.order_queue[
+                len(self.world.order_queue) + 1 : len(world.order_queue)
+            ]
+            new_recipes = list(set([o.recipe for o in new_orders]))
+            self.sw = STRIPSWorld(world, new_recipes)
+            subtasks_by_recipe = self.sw.get_subtasks(
+                max_path_length=self.arglist.max_num_subtasks
+            )
+
+            for order in new_orders:
+                for subtask in subtasks_by_recipe[order.recipe.name]:
+                    if subtask in self.subtask_to_wrapper_dict:
+                        self.subtask_to_wrapper_dict[subtask].cnt += 1
+                    else:
+                        self.subtask_to_wrapper_dict[subtask] = ActionCntWrapper(
+                            subtask
+                        )
+                    # Adds back to incomplete subtask list if new or incremented from 0.
+                    if self.subtask_to_wrapper_dict[subtask] == 1:
+                        self.incomplete_subtasks.append(subtask)
+
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
@@ -466,7 +493,6 @@ class SimAgent:
         self.location = location
         self.holding = None
         self.action = (0, 0)
-        self.has_delivered = False
         self.observable_cols = observable_cols
 
     def __str__(self):
