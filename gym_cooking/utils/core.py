@@ -38,6 +38,7 @@ class GridSquare:
         self.collidable = True  # cannot go through
         self.dynamic = False  # cannot move around
         self.is_dispenser = False
+        self.is_shared = False
 
     def __str__(self):
         return color(self.rep, self.color)

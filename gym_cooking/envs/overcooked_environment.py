@@ -172,6 +172,18 @@ class OvercookedEnvironment(gym.Env):
         self.world.height = y
         self.world.perimeter = 2 * (self.world.width + self.world.height)
 
+        for v in self.world.objects.values():
+            for obj in v:
+                if isinstance(obj, GridSquare):
+                    x, y = obj.location
+                    if not (
+                        x == 0
+                        or x == self.world.width
+                        or y == 0
+                        or y == self.world.height
+                    ):
+                        obj.is_shared = True
+
     def reset(self):
         self.world = World(arglist=self.arglist)
         self.recipes = []

@@ -82,3 +82,15 @@ class E2E_B3RTDP:
 
     def get_action(self):
         raise NotImplementedError()
+
+    def C(self, belief_state, action):
+        raise NotImplementedError()
+
+    def T(self, belief_state, action):
+        raise NotImplementedError()
+
+    def V(self, belief_state):
+        raise NotImplementedError()
+
+    def Q(self, belief_state, action, value_f):
+        raise NotImplementedError()

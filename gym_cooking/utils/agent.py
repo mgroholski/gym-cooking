@@ -20,6 +20,8 @@ from termcolor import colored as color
 from utils.core import CookingPan, Counter, Cutboard
 from utils.utils import agent_settings
 
+from gym_cooking.navigation_planner.planners.e2e_b3rtdp import E2E_B3RTDP
+
 AgentRepr = namedtuple("AgentRepr", "name location holding")
 
 # Colors for agents.
@@ -56,12 +58,15 @@ class RealAgent:
 
         self.subtask_removed = False
 
+        self.beliefs = {}
         # Navigation planner.
-        self.planner = E2E_BRTDP(
-            alpha=arglist.alpha,
-            tau=arglist.tau,
-            cap=arglist.cap,
-            main_cap=arglist.main_cap,
+        self.partially_observable = arglist.partially_observable
+        self.planner = E2E_B3RTDP(
+            D=self.arglist.D,
+            alpha=self.arglist.alpha,
+            epsilon=self.arglist.epsilon,
+            beta=self.arglist.beta,
+            tau=self.arglist.tau,
         )
 
     def __str__(self):
