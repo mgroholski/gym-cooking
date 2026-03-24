@@ -102,7 +102,7 @@ class OvercookedEnvironment(gym.Env):
 
     def get_agent_obs(self, agent_idx):
         env_copy = copy.copy(self)
-        if self.arglist.partially_observable and False:
+        if self.arglist.partially_observable:
             # Obfuscates the world
             observable_col_rng = self.sim_agents[agent_idx].observable_cols
 
