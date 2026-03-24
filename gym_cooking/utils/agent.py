@@ -45,7 +45,7 @@ class RealAgent:
         self.subtask_to_wrapper_dict = {}
         self.signal_reset_delegator = False
         self.is_subtask_complete = lambda w: False
-        self.beta = arglist.beta
+        self.beta_bd = arglist.beta_bd
         self.none_action_prob = 0.5
 
         self.world = copy.copy(obs.world)
@@ -58,16 +58,24 @@ class RealAgent:
 
         self.subtask_removed = False
 
-        self.beliefs = {}
         # Navigation planner.
+
         self.partially_observable = arglist.partially_observable
-        self.planner = E2E_B3RTDP(
-            D=self.arglist.D,
-            alpha=self.arglist.alpha,
-            epsilon=self.arglist.epsilon,
-            beta=self.arglist.beta,
-            tau=self.arglist.tau,
-        )
+        if self.partially_observable:
+            self.planner = E2E_B3RTDP(
+                D=self.arglist.D,
+                alpha=self.arglist.alpha,
+                epsilon=self.arglist.epsilon,
+                beta=self.arglist.beta,
+                tau=self.arglist.tau,
+            )
+        else:
+            self.planner = E2E_BRTDP(
+                alpha=arglist.alpha,
+                tau=arglist.tau,
+                cap=arglist.cap,
+                main_cap=arglist.main_cap,
+            )
 
     def __str__(self):
         return color(self.name[-1], self.color)
@@ -103,6 +111,13 @@ class RealAgent:
 
         if obs.t == 0:
             self.setup_subtasks(env=obs)
+
+        if self.partially_observable:
+            if obs.t == 0:
+                self.init_beliefs()
+
+            # Update beliefs based on obs
+            self.belief_update(obs=obs)
 
         # Select subtask based on Bayesian Delegation.
 
@@ -239,7 +254,7 @@ class RealAgent:
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
                     actions_tm1=env.agent_actions,
-                    beta=self.beta,
+                    beta=self.beta_bd,
                 )
         self.subtask_removed = False
 
@@ -416,6 +431,30 @@ class RealAgent:
             self.is_subtask_complete = lambda w: (
                 len(w.get_all_object_locs(obj=self.goal_obj)) > self.cur_obj_count
             )
+
+    def init_beliefs(self):
+        """
+        Initializes the beliefs of the existence of all the objects required to complete sub-tasks.
+        """
+
+        self.beliefs = {}
+
+        for subtask in self.incomplete_subtasks:
+            for precondition in subtask.pre:
+                raise NotImplementedError()
+
+            for post_condition in subtask.post_add:
+                raise NotImplementedError()
+
+            action_obj = nav_utils.get_subtask_action_obj(subtask)
+            raise NotImplementedError()
+
+            breakpoint()
+
+        raise NotImplementedError()
+
+    def belief_update(self, obs):
+        raise NotImplementedError()
 
 
 class SimAgent:

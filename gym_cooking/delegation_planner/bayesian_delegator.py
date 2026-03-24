@@ -84,6 +84,13 @@ class BayesianDelegator(Delegator):
     def subtask_alloc_is_doable(self, env, subtask, subtask_agent_names):
         """Return whether subtask allocation (subtask x subtask_agent_names) is doable
         in the current environment state."""
+
+        raise NotImplementedError()
+        """
+        We'll need to edit this to utilize our belief states.
+
+        """
+
         # Doing nothing is always possible.
         if subtask is None:
             return True

@@ -61,15 +61,45 @@ def parse_arguments():
 
     # Delegation Planner
     parser.add_argument(
-        "--beta",
+        "--beta-bd",
         type=float,
         default=1.3,
         help="Beta for softmax in Bayesian delegation updates",
     )
 
     # Navigation Planner
-    parser.add_argument("--alpha", type=float, default=0.01, help="Alpha for BRTDP")
-    parser.add_argument("--tau", type=int, default=2, help="Normalize v diff")
+    parser.add_argument(
+        "-D",
+        type=float,
+        default=12.5,
+        help="Belief discretization factor for B3RTDP. Per Adalgeirsson et al. the typical range is [5,20].",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.01,
+        help="Alpha for BRTDP and B3RTDP. Per Adalgeirsson et al. the typical range is [0.65,1] and BRTDP has 0.01.",
+    )
+    parser.add_argument(
+        "--tau",
+        type=int,
+        default=2,
+        help="Normalize v diff. Per Adalgeirsson et al. the typical range is [5,100] and BRTDP has 2.",
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=0.00505,
+        help="Minimum convergence frontier probability. Per Adalgeirsson et al. the typical range is [0.0001,0.01].",
+    )
+
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=0.00505,
+        help="Minimum value gap. Per Adalgeirsson et al. the typical range is [0.0001,0.01].",
+    )
+
     parser.add_argument(
         "--cap",
         type=int,

@@ -172,6 +172,7 @@ class OvercookedEnvironment(gym.Env):
         self.world.height = y
         self.world.perimeter = 2 * (self.world.width + self.world.height)
 
+        # Adds is_shared attribute
         for v in self.world.objects.values():
             for obj in v:
                 if isinstance(obj, GridSquare):
