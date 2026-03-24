@@ -139,6 +139,7 @@ def initialize_agents(arglist, obs):
     with open("utils/levels/{}.txt".format(arglist.level), "r") as f:
         phase = 1
         recipes = []
+        agent_idx = 0
         for line in f:
             line = line.strip("\n")
             if line == "":
@@ -160,6 +161,10 @@ def initialize_agents(arglist, obs):
                         obs=obs.get_agent_obs(len(real_agents)),
                     )
                     real_agents.append(real_agent)
+
+            elif phase == 4:
+                # phase 4: reads in the observable column ranges only in overcooked_environment.py
+                continue
 
     return real_agents
 
