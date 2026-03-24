@@ -163,6 +163,10 @@ class RealAgent:
         self.subtask_to_wrapper_dict = self.get_subtasks(env.world)
         self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
 
+        print(
+            f"{color(self.name, self.color)} has incomplete subtasks: {self.incomplete_subtasks}"
+        )
+
         self.delegator = BayesianDelegator(
             agent_name=self.name,
             all_agent_names=env.get_agent_names(),
