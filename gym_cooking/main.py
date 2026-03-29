@@ -71,7 +71,7 @@ def parse_arguments():
     parser.add_argument(
         "-D",
         type=float,
-        default=12.5,
+        default=5,
         help="Belief discretization factor for B3RTDP. Per Adalgeirsson et al. the typical range is [5,20].",
     )
     parser.add_argument(
@@ -110,7 +110,14 @@ def parse_arguments():
         "--main-cap",
         type=int,
         default=100,
-        help="Max number of main loops in each run of BRTDP",
+        help="Max number of main loops in each run of BRTDP and B3RTDP",
+    )
+
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=100,
+        help="Max depth for the B3RTDP sample trial function.",
     )
 
     # Visualizations

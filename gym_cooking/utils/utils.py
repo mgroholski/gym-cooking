@@ -1,3 +1,13 @@
+import copy
+from typing import List
+
+import navigation_planner.utils as nav_utils
+import numpy as np
+import scipy as sp
+
+from gym_cooking.utils.core import Food
+
+
 def agent_settings(arglist, agent_name):
     if agent_name[-1] == "1":
         return arglist.model1
@@ -11,20 +21,290 @@ def agent_settings(arglist, agent_name):
         raise ValueError("Agent name doesn't follow the right naming, `agent-<int>`")
 
 
-class AgentBelief:
-    def __init__(self):
+def init_ingredient_belief(obj, obs):
+    """
+    1. If object is is not in initial state, then b(x_m) = 0
+    2. If object is in initial state and not reachable by agent then, b(x_m) = 1
+    3. Otherwise, b(x_m) = 0.5
+    """
+
+    if len(obj.contents) > 1 or (
+        isinstance(obj.contents[0], Food) and obj.contents[0].state_index != 0
+    ):
+        return 0
+
+    # Anything in the observable state is reachable by the observer.
+    if not len(obs.world.get_all_object_locs(obj)):
+        return 1
+
+    return 0.5
+
+
+class ExistenceBeliefs:
+    """
+    Belief state over independent binary existence variables.
+
+    Each entry in `self.existence_beliefs` is the current probability that a
+    named object/state exists. Beliefs are updated independently via:
+
+        B_t(X=1) ∝ B_{t-1}(X=1) * P(a_t | b^(X=1), H)
+        B_t(X=0) ∝ B_{t-1}(X=0) * P(a_t | b^(X=0), H)
+
+    followed by binary normalization for each state.
+    """
+
+    def __init__(self, obs, beta, subtasks_by_recipe, D=5):
+        self.beta = float(beta)
+        self.D = int(D)
+
+        beliefs: Dict[str, float] = {}
+
+        for recipe_subtasks in subtasks_by_recipe.values():
+            for subtask in recipe_subtasks:
+                start_objs, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
+
+                if isinstance(start_objs, (list, tuple)):
+                    for start_obj in start_objs:
+                        beliefs[start_obj.full_name] = init_ingredient_belief(
+                            start_obj, obs
+                        )
+                else:
+                    beliefs[start_objs.full_name] = init_ingredient_belief(
+                        start_objs, obs
+                    )
+
+                beliefs[goal_obj.full_name] = init_ingredient_belief(goal_obj, obs)
+
+                action_obj = nav_utils.get_subtask_action_obj(subtask)
+                if action_obj is not None:
+                    # At t=0, if no such object exists in the world, belief is 1.0.
+                    # Otherwise initialize with uncertainty 0.5.
+                    beliefs[action_obj.name] = (
+                        1.0
+                        if not len(obs.world.get_all_object_locs(action_obj))
+                        else 0.5
+                    )
+
+        self.existence_beliefs: Dict[str, float] = beliefs
+        self.states: List[str] = list(beliefs.keys())
+        self._state_to_idx: Dict[str, int] = {
+            state: idx for idx, state in enumerate(self.states)
+        }
+
+    def __copy__(self):
+        return copy.deepcopy(self)
+
+    def __deepcopy__(self, memo):
+        new_obj = self.__class__.__new__(self.__class__)
+        memo[id(self)] = new_obj
+        new_obj.beta = self.beta
+        new_obj.D = self.D
+        new_obj.existence_beliefs = copy.deepcopy(self.existence_beliefs, memo)
+        new_obj.states = copy.deepcopy(self.states, memo)
+        new_obj._state_to_idx = copy.deepcopy(self._state_to_idx, memo)
+        return new_obj
+
+    def __getitem__(self, key):
+        return self.existence_beliefs[key]
+
+    def __setitem__(self, key, value):
+        self.existence_beliefs[key] = float(value)
+
+    def __contains__(self, key):
+        return key in self.existence_beliefs
+
+    def __repr__(self):
+        return f"ExistenceBeliefs({self.existence_beliefs})"
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def belief_update(
+        self, observed_joint_action, subtask_alloc_dist, joint_actions, Q
+    ):
         """
-        Within this class we'll want to hold beliefs about the other agent's capabilities and the current incomplete subtask set.
+        Update each binary existence belief using the observed joint action.
 
+        Args:
+            observed_joint_action:
+                The joint action actually observed at time t.
+            subtask_alloc_dist:
+                Distribution over subtask allocations.
+            joint_actions:
+                Iterable of all candidate joint actions.
+            Q:
+                Callable with signature:
+                    Q(belief, partial_action, subtask) -> float
+
+                `belief` is passed as a numpy array in self.states order.
+
+        Returns:
+            dict[str, float]: Updated existence beliefs.
         """
+        observed_joint_action = tuple(observed_joint_action)
+        likelihood_dist_cache: Dict[str, Dict[Tuple, float]] = {}
+        updated_beliefs: Dict[str, float] = {}
 
-        raise NotImplementedError()
+        for state in self.states:
+            prior_true = self._clamp_prob(self.existence_beliefs[state])
+            prior_false = 1.0 - prior_true
 
-    def update(self, obs):
-        raise NotImplementedError()
+            belief_true = self._belief_array_with_clamped_state(state, 1.0)
+            like_true = self._likelihood_of_observed_action(
+                belief_true,
+                subtask_alloc_dist,
+                joint_actions,
+                observed_joint_action,
+                Q,
+                cache=likelihood_dist_cache,
+            )
 
-    def is_agent_capable(self, subtask):
-        raise NotImplementedError()
+            belief_false = self._belief_array_with_clamped_state(state, 0.0)
+            like_false = self._likelihood_of_observed_action(
+                belief_false,
+                subtask_alloc_dist,
+                joint_actions,
+                observed_joint_action,
+                Q,
+                cache=likelihood_dist_cache,
+            )
 
-    def get_incomplete_subtasks(self):
-        raise NotImplementedError()
+            numerator = prior_true * like_true
+            denominator = numerator + (prior_false * like_false)
+
+            if np.isclose(denominator, 0.0):
+                updated_beliefs[state] = prior_true
+            else:
+                updated_beliefs[state] = numerator / denominator
+
+        self.existence_beliefs.update(updated_beliefs)
+        return self.existence_beliefs
+
+    def _likelihood_of_observed_action(
+        self,
+        belief,
+        subtask_alloc_dist,
+        joint_actions,
+        observed_joint_action,
+        Q,
+        cache=None,
+    ):
+        """
+        Return P(observed_joint_action | belief, H) by first constructing the
+        normalized action distribution.
+        """
+        cache_key = tuple(float(x) for x in belief)
+
+        if cache is not None and cache_key in cache:
+            action_dist = cache[cache_key]
+        else:
+            action_dist = self._likelihood_helper(
+                belief=belief,
+                subtask_alloc_dist=subtask_alloc_dist,
+                joint_actions=joint_actions,
+                Q=Q,
+            )
+            if cache is not None:
+                cache[cache_key] = action_dist
+
+        return action_dist.get(tuple(observed_joint_action), 0.0)
+
+    def _likelihood_helper(self, belief, subtask_alloc_dist, joint_actions, Q):
+        """
+        Compute a normalized likelihood over candidate joint actions:
+
+            P(a_t | belief, H_{0:t-1})
+            ∝ sum_{subtask_alloc} P(subtask_alloc | H_{0:t-1})
+                * product_{(subtask, subtask_agents) in subtask_alloc}
+                    exp(beta * Q(belief, action_for_agents, subtask))
+
+        Args:
+            belief:
+                np.array belief vector in self.states order.
+            subtask_alloc_dist:
+                Distribution over subtask allocations.
+            joint_actions:
+                Iterable of candidate joint actions.
+            Q:
+                Callable:
+                    Q(belief, partial_action, subtask) -> float
+
+        Returns:
+            dict mapping joint_action -> normalized probability
+        """
+        action_scores: Dict[Tuple, float] = {}
+
+        for joint_action in joint_actions:
+            joint_action = tuple(joint_action)
+            total_score = 0.0
+
+            for subtask_alloc, alloc_prob in subtask_alloc_dist.get_list():
+                if alloc_prob <= 0.0:
+                    continue
+
+                log_weight = 0.0
+
+                for subtask, subtask_agents in subtask_alloc:
+                    partial_action = self._extract_subtask_action(
+                        joint_action, subtask_agents
+                    )
+                    q_val = float(Q(belief, partial_action, subtask))
+                    log_weight += self.beta * q_val
+
+                total_score += float(alloc_prob) * math.exp(log_weight)
+
+            action_scores[joint_action] = total_score
+
+        normalizer = sum(action_scores.values())
+        if np.isclose(normalizer, 0.0):
+            n = len(action_scores)
+            uniform_prob = (1.0 / n) if n > 0 else 0.0
+            return {a: uniform_prob for a in action_scores}
+
+        return {a: score / normalizer for a, score in action_scores.items()}
+
+    def _extract_subtask_action(self, joint_action, subtask_agents):
+        """
+        Extract the agent-specific component of a joint action.
+
+        Example:
+            joint_action = ('up', 'left', 'stay')
+            subtask_agents = [0, 2]
+            returns ('up', 'stay')
+        """
+        return tuple(joint_action[i] for i in subtask_agents)
+
+    def _belief_array_with_clamped_state(self, state, value):
+        """
+        Return the current belief vector as a numpy array, with one state forced
+        to the supplied value.
+        """
+        belief = self.to_np_array().copy()
+        belief[self._state_to_idx[state]] = float(value)
+        return belief
+
+    @staticmethod
+    def _clamp_prob(value):
+        return min(max(float(value), 0.0), 1.0)
+
+    def to_list(self):
+        return [self.discretize()[state] for state in self.states]
+
+    def to_tuple(self):
+        return tuple(self.to_list())
+
+    def to_np_array(self):
+        return np.asarray(self.to_list(), dtype=float)
+
+    def discretize(self):
+        """
+        Discretize each probability to the nearest multiple of 1 / D.
+        """
+        discretized = {}
+
+        for state in self.states:
+            prob = self._clamp_prob(self.existence_beliefs[state])
+            discretized_prob = round(prob * self.D) / self.D
+            discretized[state] = self._clamp_prob(discretized_prob)
+
+        return discretized

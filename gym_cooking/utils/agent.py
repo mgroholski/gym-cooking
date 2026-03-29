@@ -1,7 +1,7 @@
 # Recipe planning
 import copy
 from collections import namedtuple
-from typing import Dict
+from typing import Dict, List
 
 import navigation_planner.utils as nav_utils
 import numpy as np
@@ -11,16 +11,16 @@ import recipe_planner.utils as recipe_utils
 from delegation_planner.bayesian_delegator import BayesianDelegator
 
 # Navigation planner
-from navigation_planner.planners.e2e_brtdp import E2E_BRTDP
 from recipe_planner.stripsworld import STRIPSWorld
 from recipe_planner.utils import *
 from termcolor import colored as color
 
 # Other core modules
 from utils.core import CookingPan, Counter, Cutboard
-from utils.utils import agent_settings
+from utils.utils import ExistenceBeliefs, agent_settings
 
 from gym_cooking.navigation_planner.planners.e2e_b3rtdp import E2E_B3RTDP
+from gym_cooking.utils.interact import interact
 
 AgentRepr = namedtuple("AgentRepr", "name location holding")
 
@@ -59,23 +59,16 @@ class RealAgent:
         self.subtask_removed = False
 
         # Navigation planner.
-
         self.partially_observable = arglist.partially_observable
-        if self.partially_observable:
-            self.planner = E2E_B3RTDP(
-                D=self.arglist.D,
-                alpha=self.arglist.alpha,
-                epsilon=self.arglist.epsilon,
-                beta=self.arglist.beta,
-                tau=self.arglist.tau,
-            )
-        else:
-            self.planner = E2E_BRTDP(
-                alpha=arglist.alpha,
-                tau=arglist.tau,
-                cap=arglist.cap,
-                main_cap=arglist.main_cap,
-            )
+        self.planner = E2E_B3RTDP(
+            D=arglist.D,
+            alpha=arglist.alpha,
+            epsilon=arglist.epsilon,
+            beta=arglist.beta,
+            tau=arglist.tau,
+            depth=arglist.depth,
+            main_cap=arglist.main_cap,
+        )
 
     def __str__(self):
         return color(self.name[-1], self.color)
@@ -104,6 +97,8 @@ class RealAgent:
 
     def select_action(self, obs):
         """Return best next action for this agent given observations."""
+        # TODO: REMOVE
+        # MAIN FUNCTION
         sim_agent = list(filter(lambda x: x.name == self.name, obs.sim_agents))[0]
         self.location = sim_agent.location
         self.holding = sim_agent.holding
@@ -111,16 +106,13 @@ class RealAgent:
 
         if obs.t == 0:
             self.setup_subtasks(env=obs)
-
-        if self.partially_observable:
-            if obs.t == 0:
-                self.init_beliefs()
-
-            # Update beliefs based on obs
+            self.init_beliefs(obs)
+        else:
             self.belief_update(obs=obs)
 
-        # Select subtask based on Bayesian Delegation.
+        obs.build_heuristic(self.sw.ordered_subtasks_by_recipe, self.existence_beliefs)
 
+        # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
         self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
             agent_name=self.name,
@@ -128,25 +120,23 @@ class RealAgent:
         self.plan(copy.copy(obs))
         return self.action
 
-    def get_subtasks(self, world) -> Dict:
+    def get_subtasks(self, recipes, world) -> Dict:
         """Return different subtask permutations for active orders."""
 
         active_orders = list(getattr(world, "order_queue", []))
 
-        if active_orders:
-            recipes = list(set([o.recipe for o in active_orders]))
-        else:
+        if not len(active_orders):
             return {}
 
         self.sw = STRIPSWorld(world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
-        subtasks_by_recipe = self.sw.get_subtasks(
+        self.subtasks_by_recipe = self.sw.get_subtasks(
             max_path_length=self.arglist.max_num_subtasks
         )
 
         all_subtasks = {}
         for order in active_orders:
-            for subtask in subtasks_by_recipe[order.recipe.name]:
+            for subtask in self.subtasks_by_recipe[order.recipe.name]:
                 if subtask in all_subtasks:
                     all_subtasks[subtask].cnt += 1
                 else:
@@ -160,7 +150,7 @@ class RealAgent:
 
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
-        self.subtask_to_wrapper_dict = self.get_subtasks(env.world)
+        self.subtask_to_wrapper_dict = self.get_subtasks(env.recipes, env.world)
         self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
 
         print(
@@ -192,14 +182,9 @@ class RealAgent:
             new_orders = world.order_queue[
                 len(self.world.order_queue) + 1 : len(world.order_queue)
             ]
-            new_recipes = list(set([o.recipe for o in new_orders]))
-            self.sw = STRIPSWorld(world, new_recipes)
-            subtasks_by_recipe = self.sw.get_subtasks(
-                max_path_length=self.arglist.max_num_subtasks
-            )
 
             for order in new_orders:
-                for subtask in subtasks_by_recipe[order.recipe.name]:
+                for subtask in self.subtasks_by_recipe[order.recipe.name]:
                     if subtask in self.subtask_to_wrapper_dict:
                         self.subtask_to_wrapper_dict[subtask].cnt += 1
                     else:
@@ -265,12 +250,15 @@ class RealAgent:
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
         if (self.subtask_removed) or (
             self.delegator.should_reset_priors(
-                obs=copy.copy(env), incomplete_subtasks=self.incomplete_subtasks
+                obs=copy.copy(env),
+                belief=self.existence_beliefs,
+                incomplete_subtasks=self.incomplete_subtasks,
             )
         ):
             self.reset_subtasks()
             self.delegator.set_priors(
                 obs=copy.copy(env),
+                belief=self.existence_beliefs,
                 incomplete_subtasks=self.incomplete_subtasks,
                 priors_type=self.priors,
             )
@@ -278,13 +266,15 @@ class RealAgent:
             if self.subtask is None:
                 self.delegator.set_priors(
                     obs=copy.copy(env),
+                    belief=self.existence_beliefs,
                     incomplete_subtasks=self.incomplete_subtasks,
                     priors_type=self.priors,
                 )
             else:
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
-                    actions_tm1=env.agent_actions,
+                    b_tm1=copy.copy(self.existence_beliefs_tm1),
+                    a_tm1=self.action,
                     beta=self.beta_bd,
                 )
         self.subtask_removed = False
@@ -313,6 +303,7 @@ class RealAgent:
             self.def_subtask_completion(env=env)
 
         # If subtask is None, then do nothing.
+
         if (self.new_subtask is None) or (not self.new_subtask_agent_names):
             actions = nav_utils.get_single_actions(env=env, agent=self)
             probs = []
@@ -327,14 +318,8 @@ class RealAgent:
             if self.model_type == "greedy" or initializing_priors:
                 other_agent_planners = {}
             else:
-                # Determine other agent planners for level 1 planning.
-                # Other agent planners are based on your planner---agents never
-                # share planners.
                 backup_subtask = (
                     self.new_subtask if self.new_subtask is not None else self.subtask
-                )
-                other_agent_planners = self.delegator.get_other_agent_planners(
-                    obs=copy.copy(env), backup_subtask=backup_subtask
                 )
 
             print(
@@ -345,20 +330,17 @@ class RealAgent:
 
             action = self.planner.get_next_action(
                 env=env,
+                belief=self.existence_beliefs,
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
-                other_agent_planners=other_agent_planners,
+                subtasks_set=set([x[0][0] for x in self.delegator.probs.probs.keys()]),
             )
 
-            # If joint subtask, pick your part of the simulated joint plan.
-            if self.name not in self.new_subtask_agent_names and self.planner.is_joint:
-                self.action = action[0]
-            else:
-                self.action = (
-                    action[self.new_subtask_agent_names.index(self.name)]
-                    if self.planner.is_joint
-                    else action
-                )
+            self.action = (
+                action[self.new_subtask_agent_names.index(self.name)]
+                if self.planner.is_joint
+                else action
+            )
 
         # Update subtask.
         self.subtask = self.new_subtask
@@ -463,29 +445,36 @@ class RealAgent:
                 len(w.get_all_object_locs(obj=self.goal_obj)) > self.cur_obj_count
             )
 
-    def init_beliefs(self):
+    def init_beliefs(self, obs):
         """
-        Initializes the beliefs of the existence of all the objects required to complete sub-tasks.
+        Initializes the beliefs of the existence of all the objects
+        required to complete sub-tasks for each recipe.
         """
 
-        self.beliefs = {}
-
-        for subtask in self.incomplete_subtasks:
-            for precondition in subtask.pre:
-                raise NotImplementedError()
-
-            for post_condition in subtask.post_add:
-                raise NotImplementedError()
-
-            action_obj = nav_utils.get_subtask_action_obj(subtask)
-            raise NotImplementedError()
-
-            breakpoint()
-
-        raise NotImplementedError()
+        self.existence_beliefs = ExistenceBeliefs(
+            obs, self.arglist.beta, self.subtasks_by_recipe, self.arglist.D
+        )
 
     def belief_update(self, obs):
-        raise NotImplementedError()
+        """Conducts belief updates."""
+        self.existence_beliefs_tm1 = copy.copy(self.existence_beliefs)
+        cur_state_repr, belief_tuple = (
+            obs.world.get_repr(),
+            self.existence_beliefs.to_tuple(),
+        )
+
+        task_allocation = set([x[0][0] for x in self.delegator.probs.probs.keys()])
+
+        Q_func = lambda b, a, t: self.planner.Q(obs.world, b, a, self.planner.v_l, t)
+
+        actions = [(0, 0), (0, 1), (1, 0), (-1, 0), (0, -1)]
+        joint_actions = list(product(*([actions] * len(obs.sim_agents))))
+        self.existence_beliefs.belief_update(
+            [a.action for a in obs.sim_agents],
+            self.delegator.probs,
+            joint_actions,
+            Q_func,
+        )
 
 
 class SimAgent:

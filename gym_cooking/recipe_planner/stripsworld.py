@@ -73,25 +73,40 @@ class STRIPSWorld:
 
     def get_subtasks(self, max_path_length=10, draw_graph=False):
         action_paths_dict = {}
+        self.ordered_subtasks_by_recipe = {}
 
         for recipe_obj in self.recipes:
             graph, goal_state = self.generate_graph(recipe_obj, max_path_length)
-
             if draw_graph:  # not recommended for path length > 4
                 nx.draw(graph, with_labels=True)
                 plt.show()
-
             all_state_paths = nx.all_shortest_paths(graph, self.initial, goal_state)
-
             union_action_path = set()
+            relevant_nodes = set()
+
             for state_path in all_state_paths:
                 action_path = [
                     graph[state_path[i]][state_path[i + 1]]["obj"]
                     for i in range(len(state_path) - 1)
                 ]
                 union_action_path = union_action_path | set(action_path)
-            # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
+                relevant_nodes.update(state_path)
+
             action_paths_dict[recipe_obj.name] = union_action_path
+
+            subgraph = graph.subgraph(relevant_nodes)
+            topo_order = list(nx.topological_sort(subgraph))
+            topo_rank = {node: i for i, node in enumerate(topo_order)}
+
+            seen = set()
+            ordered_subtasks = []
+            for u, v in sorted(subgraph.edges(), key=lambda e: topo_rank[e[0]]):
+                action = subgraph[u][v]["obj"]
+                if action not in seen:
+                    ordered_subtasks.append(action)
+                    seen.add(action)
+
+            self.ordered_subtasks_by_recipe[recipe_obj.name] = ordered_subtasks
 
         return action_paths_dict
 

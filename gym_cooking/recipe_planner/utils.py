@@ -84,15 +84,6 @@ class Action:
         self.set_specs()
         self.is_joint = False
 
-        self.cnt = None
-
-    def get_cnt_str(self):
-        return (
-            self.__str__()
-            if self.cnt is None
-            else f"{self.name}_{self.cnt}({', '.join(self.args)})"
-        )
-
     def __str__(self):
         return "{}({})".format(self.name, ", ".join(self.args))
 
@@ -219,21 +210,6 @@ class Deliver(Action):
         self.pre_default = [Merged(obj)]
         self.post_add_default = [Delivered(obj)]
         Action.__init__(self, "Deliver", pre, post_add)
-
-
-"""
-Trash(X)
-Pre: Fresh(X), Chopped(obj), Cooked(obj), Merged(obj)
-Post: Trashed(X)
-"""
-
-
-class Trash(Action):
-    def __init__(self, obj, pre=None, post_add=None):
-        self.args = (obj,)
-        self.pre_default = [NoPredicate()]
-        self.post_add_default = [Trashed(obj)]
-        Action.__init__(self, "Trash", pre, post_add)
 
 
 # STRIPSSTATE

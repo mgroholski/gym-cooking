@@ -40,7 +40,6 @@ class World:
         new.objects = copy.deepcopy(self.objects)
         new.order_queue = copy.deepcopy(self.order_queue)
         new.reachability_graph = self.reachability_graph
-        new.distances = self.distances
         return new
 
     def update_display(self):
@@ -123,122 +122,64 @@ class World:
 
         # plt.show()
 
-    def get_lower_bound_between(self, subtask, agent_locs, A_locs, B_locs):
-        """Return distance lower bound between subtask-relevant locations."""
-        lower_bound = self.perimeter + 1
-        for A_loc, B_loc in product(A_locs, B_locs):
-            bound = self.get_lower_bound_between_helper(
-                subtask=subtask, agent_locs=agent_locs, A_loc=A_loc, B_loc=B_loc
+    def get_dist_bound_helper(self, obj_locs, _type):
+        dist = float("inf")
+        if _type == "lower":
+            bound_locs = self.shared_space_locs
+            for a, b in product(obj_locs, bound_locs):
+                # Other agent cannot exist at shared location so we add one.
+                dist = min(dist, manhattan_dist(a, b) + 1)
+        elif _type == "upper":
+            bound_locs = [
+                (0, 1),
+                (1, 0),
+                (0, self.height - 1),
+                (1, self.height),
+                (self.width - 1, 0),
+                (self.width, 1),
+                (self.width - 1, self.height),
+                (self.width, self.height - 1),
+            ]
+
+            for a in obj_locs:
+                max_dist = 0
+                for b in bound_locs:
+                    max_dist = max(max_dist, manhattan_dist(a, b))
+                dist = min(dist, max_dist)
+
+        if dist == float("inf"):
+            breakpoint()
+        return dist
+
+    def get_direct_dist_between(self, A_locs, B_locs):
+        dist = float("inf")
+        for a, b in product(A_locs, B_locs):
+            dist = min(dist, manhattan_dist(a, b))
+
+        if dist == float("inf"):
+            breakpoint()
+        return dist
+
+    def get_dist_bound_between(self, A_locs, B_locs, _type):
+        """Return distance bound between A_locs and B_locs locations."""
+        assert _type == "lower" or _type == "upper", f"Invalid _type value: {_type}"
+
+        # If location exists within both lists then return minimum location, otherwise return bounded location.
+        dist = float("inf")
+        if len(A_locs) and len(B_locs):
+            # Accounts if there's a bounded shorter distance on the other side.
+            dist = min(
+                self.get_direct_dist_between(A_locs, B_locs),
+                self.get_dist_bound_helper(B_locs, _type),
+                self.get_dist_bound_helper(A_locs, _type),
             )
-            if bound < lower_bound:
-                lower_bound = bound
-        return lower_bound
+        else:
+            obj_locs = A_locs if len(A_locs) else B_locs
+            dist = self.get_dist_bound_helper(obj_locs, _type)
 
-    @lru_cache(maxsize=40000)
-    def get_lower_bound_between_helper(self, subtask, agent_locs, A_loc, B_loc):
-        lower_bound = self.perimeter + 1
-        A = self.get_gridsquare_at(A_loc)
-        B = self.get_gridsquare_at(B_loc)
-        A_possible_na = [(0, 0)] if not A.collidable else World.NAV_ACTIONS
-        B_possible_na = [(0, 0)] if not B.collidable else World.NAV_ACTIONS
-
-        for A_na, B_na in product(A_possible_na, B_possible_na):
-            if len(agent_locs) == 1:
-                try:
-                    bound_1 = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[0], (0, 0)), (A_loc, A_na)
-                    )
-                    bound_2 = nx.shortest_path_length(
-                        self.reachability_graph, (A_loc, A_na), (B_loc, B_na)
-                    )
-                except:
-                    continue
-                bound = bound_1 + bound_2 - 1
-
-            elif len(agent_locs) == 2:
-                # Try to calculate the distances between agents and Objects A and B.
-                # Distance between Agent 1 <> Object A.
-                try:
-                    bound_1_to_A = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[0], (0, 0)), (A_loc, A_na)
-                    )
-                except:
-                    bound_1_to_A = self.perimeter
-                # Distance between Agent 2 <> Object A.
-                try:
-                    bound_2_to_A = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[1], (0, 0)), (A_loc, A_na)
-                    )
-                except:
-                    bound_2_to_A = self.perimeter
-
-                # Take the agent that's the closest to Object A.
-                min_bound_to_A = min(bound_1_to_A, bound_2_to_A)
-
-                # Distance between the agents.
-                bound_between_agents = manhattan_dist(A_loc, B_loc)
-
-                # Distance between Agent 1 <> Object B.
-                try:
-                    bound_1_to_B = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[0], (0, 0)), (B_loc, B_na)
-                    )
-                except:
-                    bound_1_to_B = self.perimeter
-
-                # Distance between Agent 2 <> Object B.
-                try:
-                    bound_2_to_B = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[1], (0, 0)), (B_loc, B_na)
-                    )
-                except:
-                    bound_2_to_B = self.perimeter
-
-                # Take the agent that's the closest to Object B.
-                min_bound_to_B = min(bound_1_to_B, bound_2_to_B)
-
-                # For chop or deliver, must bring A to B.
-                if (
-                    isinstance(subtask, recipe.Chop)
-                    or isinstance(subtask, recipe.Cook)
-                    or isinstance(subtask, recipe.Deliver)
-                ):
-                    bound = min_bound_to_A + bound_between_agents - 1
-                # For merge, agents can separately go to A and B and then meet in the middle.
-                elif isinstance(subtask, recipe.Merge):
-                    min_bound_to_A, min_bound_to_B = self.check_bound(
-                        min_bound_to_A=min_bound_to_A,
-                        min_bound_to_B=min_bound_to_B,
-                        bound_1_to_A=bound_1_to_A,
-                        bound_2_to_A=bound_2_to_A,
-                        bound_1_to_B=bound_1_to_B,
-                        bound_2_to_B=bound_2_to_B,
-                    )
-                    bound = (
-                        max(min_bound_to_A, min_bound_to_B)
-                        + (bound_between_agents - 1) / 2
-                    )
-
-            if bound < lower_bound:
-                lower_bound = bound
-
-        return max(1, lower_bound)
-
-    def check_bound(
-        self,
-        min_bound_to_A,
-        min_bound_to_B,
-        bound_1_to_A,
-        bound_2_to_A,
-        bound_1_to_B,
-        bound_2_to_B,
-    ):
-        # Checking for whether it's the same agent that does the subtask.
-        if (bound_1_to_A == min_bound_to_A and bound_1_to_B == min_bound_to_B) or (
-            bound_2_to_A == min_bound_to_A and bound_2_to_B == min_bound_to_B
-        ):
-            return 2 * min_bound_to_A, 2 * min_bound_to_B
-        return min_bound_to_A, min_bound_to_B
+        if dist == float("inf"):
+            breakpoint()
+        return dist
 
     def is_occupied(self, location):
         o = list(
