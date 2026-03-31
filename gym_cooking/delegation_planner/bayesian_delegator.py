@@ -103,7 +103,7 @@ class BayesianDelegator(Delegator):
         return distance < env.world.perimeter
 
     def get_lower_bound_for_subtask_alloc(
-        self, obs, existence_beliefs, subtask, subtask_agent_names, subtasks_set
+        self, obs, existence_beliefs, subtask, subtask_agent_names
     ):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
@@ -116,7 +116,6 @@ class BayesianDelegator(Delegator):
             belief=existence_beliefs,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
-            subtasks_set=subtasks_set,
         )
 
         self.planner.value_init(env_state=obs, belief_state=existence_beliefs)
@@ -180,7 +179,6 @@ class BayesianDelegator(Delegator):
         """Setting prior probabilities w.r.t spatial metrics."""
         # Weight inversely by distance.
         subtask_allocs = some_probs.enumerate_subtask_allocs()
-        subtasks_set = set(t.subtask for x in subtask_allocs for t in x)
         for subtask_alloc in subtask_allocs:
             total_weight = 0
             for t in subtask_alloc:
@@ -192,7 +190,6 @@ class BayesianDelegator(Delegator):
                             existence_beliefs=existence_beliefs,
                             subtask=t.subtask,
                             subtask_agent_names=t.subtask_agent_names,
-                            subtasks_set=subtasks_set,
                         )
                         total_weight += 1.0 / float(lb)
                     except Exception as e:
@@ -338,7 +335,7 @@ class BayesianDelegator(Delegator):
 
         softmax_diffs = sp.special.softmax(beta * np.asarray(qdiffs))
         # Taking the softmax of the action actually taken.
-        return softmax_diffs[valid_nav_actions.index(action)]
+        return softmax_diffs[valid_nav_actions.index(action_tm1)]
 
     def get_other_subtask_allocations(
         self, remaining_agents, remaining_subtasks, base_subtask_alloc
@@ -550,8 +547,6 @@ class BayesianDelegator(Delegator):
         if self.model_type == "fb":
             return
 
-        # TODO: Change this to also normalize ta beliefs.
-        raise NotImplementedError()
         for subtask_alloc in self.probs.enumerate_subtask_allocs():
             update = 0.0
             for t in subtask_alloc:

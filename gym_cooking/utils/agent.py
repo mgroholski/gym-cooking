@@ -1,6 +1,7 @@
 # Recipe planning
 import copy
 from collections import namedtuple
+from itertools import product
 from typing import Dict, List
 
 import navigation_planner.utils as nav_utils
@@ -97,8 +98,6 @@ class RealAgent:
 
     def select_action(self, obs):
         """Return best next action for this agent given observations."""
-        # TODO: REMOVE
-        # MAIN FUNCTION
         sim_agent = list(filter(lambda x: x.name == self.name, obs.sim_agents))[0]
         self.location = sim_agent.location
         self.holding = sim_agent.holding
@@ -107,10 +106,16 @@ class RealAgent:
         if obs.t == 0:
             self.setup_subtasks(env=obs)
             self.init_beliefs(obs)
-        else:
-            self.belief_update(obs=obs)
 
         obs.build_heuristic(self.sw.ordered_subtasks_by_recipe, self.existence_beliefs)
+
+        if obs.t != 0:
+            self.belief_update(obs=obs)
+
+            if getattr(obs, "obs_tm1"):
+                obs.obs_tm1.build_heuristic(
+                    self.sw.ordered_subtasks_by_recipe, self.existence_beliefs_tm1
+                )
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
@@ -328,18 +333,11 @@ class RealAgent:
                 )
             )
 
-            action = self.planner.get_next_action(
+            self.action = self.planner.get_next_action(
                 env=env,
                 belief=self.existence_beliefs,
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
-                subtasks_set=set([x[0][0] for x in self.delegator.probs.probs.keys()]),
-            )
-
-            self.action = (
-                action[self.new_subtask_agent_names.index(self.name)]
-                if self.planner.is_joint
-                else action
             )
 
         # Update subtask.
@@ -458,22 +456,20 @@ class RealAgent:
     def belief_update(self, obs):
         """Conducts belief updates."""
         self.existence_beliefs_tm1 = copy.copy(self.existence_beliefs)
-        cur_state_repr, belief_tuple = (
-            obs.world.get_repr(),
-            self.existence_beliefs.to_tuple(),
-        )
-
-        task_allocation = set([x[0][0] for x in self.delegator.probs.probs.keys()])
-
-        Q_func = lambda b, a, t: self.planner.Q(obs.world, b, a, self.planner.v_l, t)
 
         actions = [(0, 0), (0, 1), (1, 0), (-1, 0), (0, -1)]
-        joint_actions = list(product(*([actions] * len(obs.sim_agents))))
+        null_actions = [None]
+        if obs.sim_agents[0].location is None or obs.sim_agents[0].action is None:
+            joint_actions = list(product(null_actions, actions))
+        else:
+            joint_actions = list(product(actions, null_actions))
+
         self.existence_beliefs.belief_update(
-            [a.action for a in obs.sim_agents],
+            obs,
+            tuple([a.action for a in obs.sim_agents]),
             self.delegator.probs,
             joint_actions,
-            Q_func,
+            self.delegator.planner,
         )
 
 

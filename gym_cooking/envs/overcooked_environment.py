@@ -80,8 +80,13 @@ class OvercookedEnvironment(gym.Env):
         new_env.order_queue = copy.deepcopy(self.order_queue)
         new_env.hidden_order_queue = copy.deepcopy(self.hidden_order_queue)
         new_env.world.order_queue = new_env.order_queue
-        new_env.h_u = self.h_u
-        new_env.h_l = self.h_l
+        if hasattr(self, "obs_tm1") and self.obs_tm1 is not None:
+            if hasattr(self.obs_tm1, "obs_tm1") and self.obs_tm1.obs_tm1 is not None:
+                self.obs_tm1.obs_tm1 = None
+            new_env.obs_tm1 = copy.copy(self.obs_tm1)
+
+        new_env.h_u = copy.deepcopy(self.h_u)
+        new_env.h_l = copy.deepcopy(self.h_l)
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -137,6 +142,9 @@ class OvercookedEnvironment(gym.Env):
                     sim_agent.action = None
                     sim_agent.location = None
                     sim_agent.holding = None
+
+            if hasattr(env_copy, "obs_tm1") and env_copy.obs_tm1 is not None:
+                env_copy.obs_tm1 = env_copy.obs_tm1.get_agent_obs(agent_idx)
 
         return env_copy
 
@@ -235,6 +243,9 @@ class OvercookedEnvironment(gym.Env):
         self.termination_info = ""
         self.successful = False
         self.order_queue = []
+
+        self.h_u = {}
+        self.h_l = {}
 
         # Load world & distances.
         self.load_level(level=self.arglist.level, num_agents=self.arglist.num_agents)
@@ -518,19 +529,24 @@ class OvercookedEnvironment(gym.Env):
                 start_obj = [start_obj]
 
             h = 0
-            for obj in start_obj:
-                if _type == "lower":
-                    h += self.h_l[obj.full_name]
-                elif _type == "upper":
-                    h += self.h_u[obj.full_name]
+            try:
+                for obj in start_obj:
+                    if _type == "lower":
+                        h += self.h_l[obj.full_name]
+                    elif _type == "upper":
+                        h += self.h_u[obj.full_name]
 
-            if action_obj is not None:
-                if _type == "lower":
-                    h += self.h_l[action_obj.name]
-                elif _type == "upper":
-                    h += self.h_u[action_obj.name]
+                if action_obj is not None:
+                    if _type == "lower":
+                        h += self.h_l[action_obj.name]
+                    elif _type == "upper":
+                        h += self.h_u[action_obj.name]
 
-            return h + holding_penalty + null_obs_penalty
+                return h + holding_penalty + null_obs_penalty
+
+            except Exception as e:
+                print(e)
+                breakpoint()
 
     def build_heuristic(self, ordered_subtasks_by_recipe, beliefs):
         """Computes the heuristics for each unique subtask."""

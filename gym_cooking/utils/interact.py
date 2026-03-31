@@ -41,7 +41,11 @@ def interact(agent, world):
         # if occupied gridsquare in front --> try merging
         elif world.is_occupied(gs.location):
             # Get object on gridsquare/counter
-            obj = world.get_object_at(gs.location, None, find_held_objects=False)
+            try:
+                obj = world.get_object_at(gs.location, None, find_held_objects=False)
+            except Exception as e:
+                print(e)
+                breakpoint()
 
             if mergeable(agent.holding, obj):
                 world.remove(obj)

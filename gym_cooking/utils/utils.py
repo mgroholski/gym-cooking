@@ -1,5 +1,6 @@
 import copy
-from typing import List
+import math
+from typing import Dict, List, Tuple
 
 import navigation_planner.utils as nav_utils
 import numpy as np
@@ -120,7 +121,7 @@ class ExistenceBeliefs:
         return copy.deepcopy(self)
 
     def belief_update(
-        self, observed_joint_action, subtask_alloc_dist, joint_actions, Q
+        self, obs, observed_joint_action, subtask_alloc_dist, joint_actions, planner
     ):
         """
         Update each binary existence belief using the observed joint action.
@@ -141,7 +142,6 @@ class ExistenceBeliefs:
         Returns:
             dict[str, float]: Updated existence beliefs.
         """
-        observed_joint_action = tuple(observed_joint_action)
         likelihood_dist_cache: Dict[str, Dict[Tuple, float]] = {}
         updated_beliefs: Dict[str, float] = {}
 
@@ -151,21 +151,23 @@ class ExistenceBeliefs:
 
             belief_true = self._belief_array_with_clamped_state(state, 1.0)
             like_true = self._likelihood_of_observed_action(
+                obs,
                 belief_true,
                 subtask_alloc_dist,
                 joint_actions,
                 observed_joint_action,
-                Q,
+                planner,
                 cache=likelihood_dist_cache,
             )
 
             belief_false = self._belief_array_with_clamped_state(state, 0.0)
             like_false = self._likelihood_of_observed_action(
+                obs,
                 belief_false,
                 subtask_alloc_dist,
                 joint_actions,
                 observed_joint_action,
-                Q,
+                planner,
                 cache=likelihood_dist_cache,
             )
 
@@ -182,62 +184,55 @@ class ExistenceBeliefs:
 
     def _likelihood_of_observed_action(
         self,
+        obs,
         belief,
         subtask_alloc_dist,
-        joint_actions,
+        joint_action_set,
         observed_joint_action,
-        Q,
+        planner,
         cache=None,
     ):
         """
         Return P(observed_joint_action | belief, H) by first constructing the
         normalized action distribution.
         """
-        cache_key = tuple(float(x) for x in belief)
+        cache_key = (obs.get_repr(), belief.to_tuple())
 
         if cache is not None and cache_key in cache:
             action_dist = cache[cache_key]
         else:
             action_dist = self._likelihood_helper(
+                obs=obs,
                 belief=belief,
                 subtask_alloc_dist=subtask_alloc_dist,
-                joint_actions=joint_actions,
-                Q=Q,
+                joint_action_set=joint_action_set,
+                planner=planner,
             )
             if cache is not None:
                 cache[cache_key] = action_dist
 
-        return action_dist.get(tuple(observed_joint_action), 0.0)
+        if observed_joint_action not in action_dist:
+            breakpoint()
 
-    def _likelihood_helper(self, belief, subtask_alloc_dist, joint_actions, Q):
+        return action_dist[observed_joint_action]
+
+    def _likelihood_helper(
+        self,
+        obs,
+        belief,
+        subtask_alloc_dist,
+        joint_action_set,
+        planner,
+    ):
         """
-        Compute a normalized likelihood over candidate joint actions:
-
-            P(a_t | belief, H_{0:t-1})
-            ∝ sum_{subtask_alloc} P(subtask_alloc | H_{0:t-1})
-                * product_{(subtask, subtask_agents) in subtask_alloc}
-                    exp(beta * Q(belief, action_for_agents, subtask))
-
-        Args:
-            belief:
-                np.array belief vector in self.states order.
-            subtask_alloc_dist:
-                Distribution over subtask allocations.
-            joint_actions:
-                Iterable of candidate joint actions.
-            Q:
-                Callable:
-                    Q(belief, partial_action, subtask) -> float
-
-        Returns:
-            dict mapping joint_action -> normalized probability
+        P(a_t|b_t^(X)) = (Sigma_ta Prod_i exp (Beta * Q(b_t^(X), a_t))P(ta|H_{t-1})) / (Sigma a_t Sigma_ta Prod_i exp (Beta * Q(b_t^(X), a_t))P(ta|H_{t-1}))
+        P(ta|H_{t-1}) = the task allocation belief at the last timestep
         """
-        action_scores: Dict[Tuple, float] = {}
 
-        for joint_action in joint_actions:
-            joint_action = tuple(joint_action)
-            total_score = 0.0
-
+        total_score = 0.0
+        action_prob = {}
+        for joint_action in joint_action_set:
+            action_prob[joint_action] = 0.0
             for subtask_alloc, alloc_prob in subtask_alloc_dist.get_list():
                 if alloc_prob <= 0.0:
                     continue
@@ -245,43 +240,42 @@ class ExistenceBeliefs:
                 log_weight = 0.0
 
                 for subtask, subtask_agents in subtask_alloc:
-                    partial_action = self._extract_subtask_action(
-                        joint_action, subtask_agents
+                    planner.set_settings(
+                        env=obs,
+                        beliefs=belief,
+                        subtask=subtask,
+                        subtask_agent_names=subtask_agents,
                     )
-                    q_val = float(Q(belief, partial_action, subtask))
-                    log_weight += self.beta * q_val
 
-                total_score += float(alloc_prob) * math.exp(log_weight)
+                    for agent_name in subtask_agents:
+                        agent_idx = int(agent_name.split("-")[-1], 10) - 1
+                        action = joint_action[agent_idx]
+                        if action is not None:
+                            q_val = float(planner.Q(obs, belief, action, planner.v_l))
+                            log_weight += self.beta * q_val
 
-            action_scores[joint_action] = total_score
+                score = float(alloc_prob) * math.exp(log_weight)
+                action_prob[joint_action] += +score
+                total_score += score
 
-        normalizer = sum(action_scores.values())
-        if np.isclose(normalizer, 0.0):
-            n = len(action_scores)
-            uniform_prob = (1.0 / n) if n > 0 else 0.0
-            return {a: uniform_prob for a in action_scores}
+        if total_score == 0.0:
+            print("0 total score.")
+            breakpoint()
 
-        return {a: score / normalizer for a, score in action_scores.items()}
+        # Normalize
+        for joint_action in action_prob:
+            action_prob[joint_action] /= total_score
 
-    def _extract_subtask_action(self, joint_action, subtask_agents):
-        """
-        Extract the agent-specific component of a joint action.
-
-        Example:
-            joint_action = ('up', 'left', 'stay')
-            subtask_agents = [0, 2]
-            returns ('up', 'stay')
-        """
-        return tuple(joint_action[i] for i in subtask_agents)
+        return action_prob
 
     def _belief_array_with_clamped_state(self, state, value):
         """
         Return the current belief vector as a numpy array, with one state forced
         to the supplied value.
         """
-        belief = self.to_np_array().copy()
-        belief[self._state_to_idx[state]] = float(value)
-        return belief
+        existence_belief = copy.deepcopy(self)
+        existence_belief[state] = value
+        return existence_belief
 
     @staticmethod
     def _clamp_prob(value):

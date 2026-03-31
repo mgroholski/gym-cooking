@@ -13,7 +13,7 @@ from utils.world import World
 
 from gym_cooking import recipe_planner
 from gym_cooking.recipe_planner.utils import Deliver
-from gym_cooking.utils.core import FoodState
+from gym_cooking.utils.core import Counter, FoodState
 
 
 class PlannerLevel(Enum):
@@ -122,11 +122,16 @@ class E2E_B3RTDP:
         self.subtask = subtask
         self.subtask_agent_names = subtask_agent_names
 
+        assert len(subtask_agent_names) <= 2, (
+            "Cannot have more than 2 agents! Hm... {}".format(subtask_agents)
+        )
+        self.is_joint = len(subtask_agent_names) == 2
+
         # Relevant objects for subtask allocation.
         self.start_obj, self.goal_obj = nav_utils.get_subtask_obj(subtask)
         self.subtask_action_obj = nav_utils.get_subtask_action_obj(subtask)
 
-    def get_next_action(self, env, belief, subtask, subtask_agent_names, subtasks_set):
+    def get_next_action(self, env, belief, subtask, subtask_agent_names):
         """
         Return next action.
         """
@@ -134,11 +139,11 @@ class E2E_B3RTDP:
         start_time = time.time()
 
         self.action_set_b = {}
-        self.subtasks_set = subtasks_set
 
         cur_state = copy.copy(env)
         cur_belief = copy.copy(belief)
 
+        # TODO: Make expected subtask allocations
         self.set_settings(
             env=env,
             beliefs=belief,
@@ -233,8 +238,6 @@ class E2E_B3RTDP:
         i = 0
         b = belief_t
         while (len(visited) < self.max_depth) and b is not None:
-            # print(f"b3rtdpTrial {i}")
-
             visited.append(b)
 
             cur_state, existence_beliefs = b
@@ -479,21 +482,27 @@ class E2E_B3RTDP:
         subtask_agents = self.get_agents(env_state=state)
 
         agent = next(
-            (agent for agent in subtask_agents if agent.location is not None), None
+            (
+                agent
+                for agent in subtask_agents
+                if agent.location is not None and agent.action is not None
+            ),
+            None,
         )
+
         if agent is None:
             raise Exception("Could not find agent in get_actions()")
+
         output_actions = nav_utils.get_single_actions(env=state, agent=agent)
 
         return output_actions
 
-    def T(self, state, belief, action, subtask=None):
-        if subtask is None:
-            subtask = self.subtask
+    def T(self, state, belief, action):
+        subtask = self.subtask
 
         subtask_agents = self.get_agents(env_state=state)
 
-        if not subtask.is_joint:
+        if not self.is_joint:
             agent = subtask_agents[0]
             sim_state = copy.copy(state)
             sim_agent = list(
@@ -503,12 +512,13 @@ class E2E_B3RTDP:
             try:
                 interact(agent=sim_agent, world=sim_state.world)
             except Exception as e:
+                print("Single")
                 print(e)
                 breakpoint()
         else:
             agent_1, agent_2 = subtask_agents
             # Corrects so the observable agent is agent_1
-            if agent_1.location is None:
+            if agent_1.action is None:
                 agent_1, agent_2 = agent_2, agent_1
 
             sim_state = copy.copy(state)
@@ -530,16 +540,38 @@ class E2E_B3RTDP:
                 for loc in sim_state.world.get_all_object_locs(obj):
                     locs.add(loc)
 
-            min_loc = sim_state.world.share_space_locs[0]
+            # Min distance of a shared space.
+            min_loc = (-1, -1)
             min_dist = float("inf")
-            for loc in state.world.share_space_locs:
+            for loc in state.world.shared_space_locs:
                 dist = nav_utils.manhattan_dist(sim_agent_1.location, loc)
                 if dist < min_dist:
                     min_dist = dist
                     min_loc = loc
 
-            if not any([loc not in sim_state.world.shared_space_locs for loc in locs]):
+            # Checks not make sure no objects are viewable
+            if not any(
+                [(loc not in sim_state.world.shared_space_locs) for loc in locs]
+            ):
+                # Check to make sure min_loc is not occupied. If it is, replace the item with
+                # our start obj.
+                start_obj = start_obj[0]
                 start_obj.location = min_loc
+                counter = sim_state.world.get_gridsquare_at(min_loc)
+                if sim_state.world.is_occupied(min_loc):
+                    obj = counter.release()
+                    sim_state.world.remove(obj)
+                counter.acquire(start_obj)
+                sim_state.world.insert(start_obj)
+            elif not any(
+                [(loc not in sim_state.world.shared_space_locs) for loc in locs]
+            ):
+                # Check to make sure min_loc is not occupied
+                start_obj = start_obj[0]
+                start_obj.location = min_loc
+                print(f"Adding {start_obj.name} to {min_loc}")
+                counter = sim_state.world.get_gridsquare_at(min_loc)
+                counter.acquire(start_obj)
                 sim_state.world.insert(start_obj)
             else:
                 # Used for planning purposes
@@ -547,11 +579,12 @@ class E2E_B3RTDP:
                     sim_agent_2.location = (min_loc[0] + 1, min_loc[1])
                 else:
                     sim_agent_2.location = (min_loc[0] - 1, min_loc[1])
-
-            interact(agent=sim_agent_1, world=sim_state.world)
-            assert sim_agent_1.location != sim_agent_2.location, (
-                "action {} led to state {}".format(action, sim_state.get_repr())
-            )
+            try:
+                interact(agent=sim_agent_1, world=sim_state.world)
+            except Exception as e:
+                print("Joint")
+                print(e)
+                breakpoint()
 
         self.repr_init(env_state=sim_state, expected_belief=belief)
         self.value_init(env_state=sim_state, belief_state=belief)
@@ -599,7 +632,6 @@ class E2E_B3RTDP:
                         belief=belief,
                         action=action,
                         value_f=self.v_u,
-                        subtask=subtask,
                     )
                     for action in self.get_actions(state_repr=s_repr)
                 ]
@@ -609,14 +641,13 @@ class E2E_B3RTDP:
                 "Don't recognize the value state function type: {}".format(_type)
             )
 
-    def Q(self, state, belief, action, value_f, subtask=None):
+    def Q(self, state, belief, action, value_f):
         """Get Q value using value_f of (state, belief, action)."""
-        if subtask is None:
-            subtask = self.subtask
+        subtask = self.subtask
 
         cost = self.cost(state, belief, action)
 
-        s_repr, belief_tuple = self.repr_init(env_state=state, expected_belief=belief)
+        _ = self.repr_init(env_state=state, expected_belief=belief)
         self.value_init(env_state=state, belief_state=belief)
 
         O = self.T(state=state, belief=belief, action=action)
@@ -633,10 +664,8 @@ class E2E_B3RTDP:
 
         return float(cost + expected_value)
 
-    def value_init(self, env_state, belief_state, subtask=None):
-        if subtask is None:
-            subtask = self.subtask
-
+    def value_init(self, env_state, belief_state):
+        subtask = self.subtask
         es_repr = env_state.get_repr()
         belief_tuple = belief_state.to_tuple()
         if ((es_repr, belief_tuple), subtask) in self.v_l and (
