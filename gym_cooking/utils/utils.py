@@ -251,7 +251,10 @@ class ExistenceBeliefs:
                         agent_idx = int(agent_name.split("-")[-1], 10) - 1
                         action = joint_action[agent_idx]
                         if action is not None:
-                            q_val = float(planner.Q(obs, belief, action, planner.v_l))
+                            q_val = (
+                                float(planner.Q(obs, belief, action, planner.v_u))
+                                + float(planner.Q(obs, belief, action, planner.v_l))
+                            ) / 2.0
                             log_weight += self.beta * q_val
 
                 score = float(alloc_prob) * math.exp(log_weight)

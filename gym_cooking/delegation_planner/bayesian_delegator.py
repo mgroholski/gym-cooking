@@ -305,12 +305,20 @@ class BayesianDelegator(Delegator):
             else:
                 return softmax_diffs[1]
 
-        old_q = self.planner.Q(
+        old_q_u = self.planner.Q(
+            state=obs_tm1,
+            belief=b_tm1,
+            action=action_tm1,
+            value_f=self.planner.v_u,
+        )
+        old_q_l = self.planner.Q(
             state=obs_tm1,
             belief=b_tm1,
             action=action_tm1,
             value_f=self.planner.v_l,
         )
+
+        old_q = (old_q_u + old_q_l) / 2.0
 
         valid_nav_actions = self.planner.get_actions(state_repr=obs_tm1.get_repr())
 
@@ -324,11 +332,22 @@ class BayesianDelegator(Delegator):
 
         qdiffs = [
             old_q
-            - self.planner.Q(
-                state=obs_tm1,
-                belief=b_tm1,
-                action=nav_action,
-                value_f=self.planner.v_l,
+            - (
+                (
+                    self.planner.Q(
+                        state=obs_tm1,
+                        belief=b_tm1,
+                        action=nav_action,
+                        value_f=self.planner.v_u,
+                    )
+                    + self.planner.Q(
+                        state=obs_tm1,
+                        belief=b_tm1,
+                        action=nav_action,
+                        value_f=self.planner.v_l,
+                    )
+                )
+                / 2.0
             )
             for nav_action in valid_nav_actions
         ]
