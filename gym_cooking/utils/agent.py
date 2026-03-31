@@ -45,7 +45,7 @@ class RealAgent:
         self.incomplete_subtasks = []
         self.subtask_to_wrapper_dict = {}
         self.signal_reset_delegator = False
-        self.is_subtask_complete = lambda w: False
+        self.is_subtask_complete = lambda w, b: False
         self.beta_bd = arglist.beta_bd
         self.none_action_prob = 0.5
 
@@ -107,14 +107,14 @@ class RealAgent:
             self.setup_subtasks(env=obs)
             self.init_beliefs(obs)
 
-        obs.build_heuristic(self.sw.ordered_subtasks_by_recipe, self.existence_beliefs)
+        obs.ordered_subtasks_by_recipe = self.sw.ordered_subtasks_by_recipe
 
         if obs.t != 0:
             self.belief_update(obs=obs)
 
             if getattr(obs, "obs_tm1"):
-                obs.obs_tm1.build_heuristic(
-                    self.sw.ordered_subtasks_by_recipe, self.existence_beliefs_tm1
+                obs.obs_tm1.ordered_subtasks_by_recipe = (
+                    self.sw.ordered_subtasks_by_recipe
                 )
 
         # Select subtask based on Bayesian Delegation.
@@ -178,6 +178,8 @@ class RealAgent:
 
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
+        belief = self.existence_beliefs
+
         # Checks if the task queue has changed.
         if len(self.world.order_queue) != len(world.order_queue):
             """
@@ -203,12 +205,12 @@ class RealAgent:
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
-            self.subtask_complete = self.is_subtask_complete(world)
+            self.subtask_complete = self.is_subtask_complete(world, belief)
             print(
                 "{} done with {} according to planner: {}\nplanner has subtask {} with subtask object {}".format(
                     color(self.name, self.color),
                     self.subtask,
-                    self.is_subtask_complete(world),
+                    self.is_subtask_complete(world, belief),
                     self.planner.subtask,
                     self.planner.goal_obj,
                 )
@@ -417,7 +419,7 @@ class RealAgent:
                 )
             )
             self.has_more_obj = lambda x: int(x) > self.cur_obj_count
-            self.is_subtask_complete = lambda w: self.has_more_obj(
+            self.is_subtask_complete = lambda w, b: self.has_more_obj(
                 len(
                     list(
                         filter(
@@ -439,7 +441,7 @@ class RealAgent:
             # Current count of desired objects.
             self.cur_obj_count = len(env.world.get_all_object_locs(obj=self.goal_obj))
             # Goal state is reached when the number of desired objects has increased.
-            self.is_subtask_complete = lambda w: (
+            self.is_subtask_complete = lambda w, b: (
                 len(w.get_all_object_locs(obj=self.goal_obj)) > self.cur_obj_count
             )
 

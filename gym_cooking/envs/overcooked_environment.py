@@ -51,8 +51,7 @@ class OvercookedEnvironment(gym.Env):
         self.known_agents_names = []
 
         # Heuristic
-        self.h_u = {}
-        self.h_l = {}
+        self.h_store = {}
 
     def get_repr(self):
         return self.world.get_repr() + tuple(
@@ -81,12 +80,12 @@ class OvercookedEnvironment(gym.Env):
         new_env.hidden_order_queue = copy.deepcopy(self.hidden_order_queue)
         new_env.world.order_queue = new_env.order_queue
         if hasattr(self, "obs_tm1") and self.obs_tm1 is not None:
-            if hasattr(self.obs_tm1, "obs_tm1") and self.obs_tm1.obs_tm1 is not None:
-                self.obs_tm1.obs_tm1 = None
             new_env.obs_tm1 = copy.copy(self.obs_tm1)
 
-        new_env.h_u = copy.deepcopy(self.h_u)
-        new_env.h_l = copy.deepcopy(self.h_l)
+        if hasattr(self, "ordered_subtasks_by_recipe"):
+            new_env.ordered_subtasks_by_recipe = self.ordered_subtasks_by_recipe
+
+        new_env.h_store = copy.deepcopy(self.h_store)
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -244,8 +243,7 @@ class OvercookedEnvironment(gym.Env):
         self.successful = False
         self.order_queue = []
 
-        self.h_u = {}
-        self.h_l = {}
+        self.h_store = {}
 
         # Load world & distances.
         self.load_level(level=self.arglist.level, num_agents=self.arglist.num_agents)
@@ -446,6 +444,7 @@ class OvercookedEnvironment(gym.Env):
 
     def get_bound_for_subtask_given_objs(
         self,
+        belief,
         subtask,
         subtask_agent_names,
         start_obj,
@@ -454,6 +453,12 @@ class OvercookedEnvironment(gym.Env):
         _type,
     ):
         """Return the bound under this subtask between objects."""
+
+        if (self.get_repr(), belief.to_tuple()) not in self.h_store:
+            self.build_heuristic(belief)
+
+        h_l = self.h_store[(self.get_repr(), belief.to_tuple())]["h_l"]
+        h_u = self.h_store[(self.get_repr(), belief.to_tuple())]["h_u"]
 
         agent_locs = []
         null_obs_penalty = 0.0
@@ -488,8 +493,10 @@ class OvercookedEnvironment(gym.Env):
                         if agent.holding != start_obj and agent.holding != goal_obj:
                             # Add one "distance"-unit cost
                             holding_penalty += HOLDING_PENALTY
-        # Account for two-agents where we DON'T want to overpenalize.
+
         holding_penalty = min(holding_penalty, HOLDING_PENALTY)
+
+        penalty = holding_penalty + null_obs_penalty
 
         A_locs, B_locs = self.get_AB_locs_given_objs(
             subtask, subtask_agent_names, start_obj, goal_obj, action_obj
@@ -521,7 +528,7 @@ class OvercookedEnvironment(gym.Env):
                                     + agent_to_b_dist,
                                 )
 
-            return dist
+            return dist + penalty
         else:
             # Joint task
             # h_b(x_m) (calculated in build_heuristic in world.py) + holding_penalty
@@ -529,30 +536,32 @@ class OvercookedEnvironment(gym.Env):
                 start_obj = [start_obj]
 
             h = 0
-            try:
-                for obj in start_obj:
-                    if _type == "lower":
-                        h += self.h_l[obj.full_name]
-                    elif _type == "upper":
-                        h += self.h_u[obj.full_name]
+            for obj in start_obj:
+                if _type == "lower":
+                    h += h_l[obj.full_name]
+                elif _type == "upper":
+                    h += h_u[obj.full_name]
 
-                if action_obj is not None:
-                    if _type == "lower":
-                        h += self.h_l[action_obj.name]
-                    elif _type == "upper":
-                        h += self.h_u[action_obj.name]
+            if action_obj is not None:
+                if _type == "lower":
+                    h += h_l[action_obj.name]
+                elif _type == "upper":
+                    h += h_u[action_obj.name]
 
-                return h + holding_penalty + null_obs_penalty
+            return h + penalty
 
-            except Exception as e:
-                print(e)
-                breakpoint()
-
-    def build_heuristic(self, ordered_subtasks_by_recipe, beliefs):
+    def build_heuristic(self, beliefs):
         """Computes the heuristics for each unique subtask."""
+        # h_b(x) = b(x)d_{use}(x) + b(not x)d_{fail}(x)
+        """
+        d_{use} shoud be the distance of the closest object whether it exists or not
+        d_{fail} should be the distance of recreating the object in case of a failure.
+        """
 
-        self.h_u = {}
-        self.h_l = {}
+        ordered_subtasks_by_recipe = self.ordered_subtasks_by_recipe
+
+        h_u = {}
+        h_l = {}
 
         agent_locs = [a.location for a in self.sim_agents if a.location is not None]
         max_bound_loc = self.world.get_dist_bound_helper(agent_locs, "upper")
@@ -573,29 +582,30 @@ class OvercookedEnvironment(gym.Env):
             )
         )
 
-        self.h_u[plate_obj.name] = (
+        h_u[plate_obj.name] = (
             plate_belief
             * self.world.get_dist_bound_between(agent_locs, plate_locs, "upper")
             + expected_failure
         )
 
-        self.h_l[plate_obj.name] = (
+        h_l[plate_obj.name] = (
             plate_belief
             * self.world.get_dist_bound_between(agent_locs, plate_locs, "lower")
             + expected_failure
         )
+        plate_name = plate_obj.name
+        del plate_obj
+        del plate
 
+        seen_subtask = set([recipe.Get(plate_name)])
         for subtasks in ordered_subtasks_by_recipe.values():
             for subtask in subtasks:
-                if str(subtask) == "Get(Plate)":
+                if subtask in seen_subtask:
                     continue
+                seen_subtask.add(subtask)
 
-                start_obj, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
+                # Subtask action object heuristic
                 subtask_action_obj = nav_utils.get_subtask_action_obj(subtask=subtask)
-
-                goal_obj_belief = beliefs[goal_obj.full_name]
-                goal_obj_locs = self.world.get_all_object_locs(goal_obj)
-
                 if subtask_action_obj is not None:
                     action_obj_belief = beliefs[subtask_action_obj.name]
                     subtask_action_obj_locs = self.world.get_all_object_locs(
@@ -613,7 +623,7 @@ class OvercookedEnvironment(gym.Env):
                         )
                     )
 
-                    self.h_u[subtask_action_obj.name] = (
+                    h_u[subtask_action_obj.name] = (
                         action_obj_belief
                         * self.world.get_dist_bound_between(
                             agent_locs, subtask_action_obj_locs, "upper"
@@ -621,7 +631,7 @@ class OvercookedEnvironment(gym.Env):
                         + expected_failure
                     )
 
-                    self.h_l[subtask_action_obj.name] = (
+                    h_l[subtask_action_obj.name] = (
                         action_obj_belief
                         * self.world.get_dist_bound_between(
                             agent_locs, subtask_action_obj_locs, "lower"
@@ -629,10 +639,16 @@ class OvercookedEnvironment(gym.Env):
                         + expected_failure
                     )
 
+                start_obj, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
+                goal_obj_belief = beliefs[goal_obj.full_name]
+                goal_obj_locs = self.world.get_all_object_locs(goal_obj)
+
+                # If the subtask involves fresh food (e.g. chop, cook, get)
                 if not isinstance(subtask, recipe.Merge) and not isinstance(
                     subtask, recipe.Deliver
                 ):
                     if len(start_obj.contents) == 1:
+                        # Heuristic for fresh food.
                         if start_obj.contents[0].state_index == 0:
                             start_obj_locs = self.world.get_all_object_locs(start_obj)
                             start_obj_belief = beliefs[start_obj.full_name]
@@ -648,7 +664,7 @@ class OvercookedEnvironment(gym.Env):
                                 )
                             )
 
-                            self.h_u[start_obj.full_name] = (
+                            h_u[start_obj.full_name] = (
                                 start_obj_belief
                                 * self.world.get_dist_bound_between(
                                     agent_locs, start_obj_locs, "upper"
@@ -656,7 +672,7 @@ class OvercookedEnvironment(gym.Env):
                                 + expected_failure
                             )
 
-                            self.h_l[start_obj.full_name] = (
+                            h_l[start_obj.full_name] = (
                                 start_obj_belief
                                 * self.world.get_dist_bound_between(
                                     agent_locs, start_obj_locs, "lower"
@@ -664,49 +680,53 @@ class OvercookedEnvironment(gym.Env):
                                 + expected_failure
                             )
 
-                        d_fail_u = 0
-                        d_fail_l = 0
-
-                        # Calculates d_fail
-                        start_obj_prev_state = copy.copy(start_obj)
-                        start_obj_prev_state.contents[0].state_index = (
-                            start_obj.contents[0].state_index - 1
-                        )
-                        start_obj_prev_state.contents[0].update_names()
-                        start_obj_prev_state.update_names()
-
-                        d_fail_u = (
-                            self.h_l[start_obj_prev_state.full_name] + max_bound_loc
-                        )  # Furthest away after completing failure
-                        d_fail_l = self.h_l[
-                            start_obj_prev_state.full_name
-                        ]  # Agent is holding it after completing failure
-
-                        if subtask_action_obj is not None:
-                            d_fail_u += self.h_u[subtask_action_obj.name]
-                            d_fail_u += self.h_u[subtask_action_obj.name]
-
-                        self.h_u[goal_obj.full_name] = (
-                            goal_obj_belief
-                            * self.world.get_dist_bound_between(
-                                agent_locs, goal_obj_locs, "upper"
+                        if start_obj != goal_obj:
+                            # Calculates d_fail
+                            # Put a copy of start object into previous state
+                            start_obj_prev_state = copy.copy(start_obj)
+                            start_obj_prev_state.contents[0].state_index = (
+                                start_obj.contents[0].state_index - 1
                             )
-                            + (1 - goal_obj_belief) * d_fail_u
-                        )
+                            start_obj_prev_state.contents[0].update_names()
+                            start_obj_prev_state.update_names()
 
-                        self.h_l[goal_obj.full_name] = (
-                            goal_obj_belief
-                            * self.world.get_dist_bound_between(
-                                agent_locs, goal_obj_locs, "lower"
+                            d_fail_u = h_l[start_obj_prev_state.full_name]
+                            if not isinstance(subtask, recipe.Get):
+                                # Furthest away after completing failure. Only applies to subtasks that are not get.
+                                d_fail_u += max_bound_loc
+
+                            d_fail_l = h_l[
+                                start_obj_prev_state.full_name
+                            ]  # Agent is holding it after completing failure
+
+                            if (
+                                subtask_action_obj is not None
+                            ):  # If subtask requires an action, we must move to that action object.
+                                d_fail_u += h_u[subtask_action_obj.name]
+                                d_fail_l += h_l[subtask_action_obj.name]
+
+                            h_u[goal_obj.full_name] = (
+                                goal_obj_belief
+                                * self.world.get_dist_bound_between(
+                                    agent_locs, goal_obj_locs, "upper"
+                                )
+                                + (1 - goal_obj_belief) * d_fail_u
                             )
-                            + (1 - goal_obj_belief) * d_fail_l
-                        )
+
+                            h_l[goal_obj.full_name] = (
+                                goal_obj_belief
+                                * self.world.get_dist_bound_between(
+                                    agent_locs, goal_obj_locs, "lower"
+                                )
+                                + (1 - goal_obj_belief) * d_fail_l
+                            )
                     else:
                         raise Exception(
-                            f"Non-Merge or Delivered task a multiple contents {subtask} and {start_obj.full_name}"
+                            f"Non-Merge or Delivered task has multiple contents {subtask} and {start_obj.full_name}"
                         )
-                else:
-                    # Merge subtask and Deliver Subtask
+                elif isinstance(subtask, recipe.Merge) or isinstance(
+                    subtask, recipe.Deliver
+                ):
                     if isinstance(subtask, recipe.Merge):
                         start_objs = start_obj
                     else:
@@ -723,7 +743,7 @@ class OvercookedEnvironment(gym.Env):
                         start_obj_belief = beliefs[start_obj.full_name]
 
                         min_d_l = float("inf")
-                        min_d_u = float("inf")
+                        max_d_u = 0
 
                         start_obj_copy = copy.copy(start_obj)
                         for content in start_obj.contents:
@@ -734,30 +754,31 @@ class OvercookedEnvironment(gym.Env):
                             d_metric_u = 0
                             if start_obj_copy.full_name != "":
                                 if (
-                                    start_obj_copy.full_name not in self.h_l
-                                    or start_obj_copy.full_name not in self.h_u
+                                    start_obj_copy.full_name not in h_l
+                                    or start_obj_copy.full_name not in h_u
                                 ):
+                                    start_obj_copy.contents.append(content)
                                     continue
 
-                                d_metric_l += self.h_l[start_obj_copy.full_name]
-                                d_metric_u += self.h_u[start_obj_copy.full_name]
+                                d_metric_l += h_l[start_obj_copy.full_name]
+                                d_metric_u += h_u[start_obj_copy.full_name]
 
                             content_obj = Object((-1, -1), content)
 
-                            d_metric_l += self.h_l[content_obj.full_name]
-                            d_metric_u += self.h_u[content_obj.full_name]
+                            d_metric_l += h_l[content_obj.full_name]
+                            d_metric_u += h_u[content_obj.full_name]
 
                             min_d_l = min(d_metric_l, min_d_l)
-                            min_d_u = min(min_d_u, d_metric_u)
+                            max_d_u = max(max_d_u, d_metric_u)
                             start_obj_copy.contents.append(content)
                             del content_obj
                         d_fail_l += min_d_l
-                        d_fail_u += min_d_u
+                        d_fail_u += max_d_u
                         d_fail_u += (
                             max_bound_loc  # Furthest away after completing failure
                         )
 
-                    self.h_u[goal_obj.full_name] = (
+                    h_u[goal_obj.full_name] = (
                         goal_obj_belief
                         * self.world.get_dist_bound_between(
                             agent_locs, goal_obj_locs, "upper"
@@ -765,13 +786,16 @@ class OvercookedEnvironment(gym.Env):
                         + (1 - goal_obj_belief) * d_fail_u
                     )
 
-                    self.h_l[goal_obj.full_name] = (
+                    h_l[goal_obj.full_name] = (
                         goal_obj_belief
                         * self.world.get_dist_bound_between(
-                            agent_locs, start_obj_locs, "lower"
+                            agent_locs, goal_obj_locs, "lower"
                         )
                         + (1 - goal_obj_belief) * d_fail_l
                     )
+                else:
+                    raise Exception(f"Did not capture subtask {subtask}.")
+        self.h_store[(self.get_repr(), beliefs.to_tuple())] = {"h_l": h_l, "h_u": h_u}
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj

@@ -180,7 +180,6 @@ class ExistenceBeliefs:
                 updated_beliefs[state] = numerator / denominator
 
         self.existence_beliefs.update(updated_beliefs)
-        return self.existence_beliefs
 
     def _likelihood_of_observed_action(
         self,

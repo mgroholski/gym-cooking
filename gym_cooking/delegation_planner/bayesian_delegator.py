@@ -61,7 +61,9 @@ class BayesianDelegator(Delegator):
         # Get currently available subtasks.
         self.incomplete_subtasks = incomplete_subtasks
         probs = self.get_subtask_alloc_probs()
-        probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
+        probs = self.prune_subtask_allocs(
+            observation=obs, belief=belief, subtask_alloc_probs=probs
+        )
         # Compare previously available subtasks with currently available subtasks.
         is_reseting_priors = not (
             len(self.probs.enumerate_subtask_allocs())
@@ -80,7 +82,7 @@ class BayesianDelegator(Delegator):
             probs = self.add_subtasks()
         return probs
 
-    def subtask_alloc_is_doable(self, env, subtask, subtask_agent_names):
+    def subtask_alloc_is_doable(self, env, belief, subtask, subtask_agent_names):
         """Return whether subtask allocation (subtask x subtask_agent_names) is doable
         in the current environment state."""
 
@@ -92,6 +94,7 @@ class BayesianDelegator(Delegator):
         subtask_action_obj = get_subtask_action_obj(subtask=subtask)
 
         distance = env.get_bound_for_subtask_given_objs(
+            belief=belief,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             start_obj=start_obj,
@@ -99,17 +102,20 @@ class BayesianDelegator(Delegator):
             action_obj=subtask_action_obj,
             _type="lower",
         )
-        # Subtask allocation is doable if it's reachable between agents and subtask objects.
+
+        # Subtask allocation is doable if there's a possibility that the required distance is less than the world perimeter.
         return distance < env.world.perimeter
 
-    def get_lower_bound_for_subtask_alloc(
-        self, obs, existence_beliefs, subtask, subtask_agent_names
+    def get_bound_for_subtask_alloc(
+        self, obs, existence_beliefs, subtask, subtask_agent_names, _type
     ):
-        """Return the value lower bound for a subtask allocation
+        """Return the value bound for a subtask allocation
         (subtask x subtask_agent_names)."""
         if subtask is None:
             print("Subtask is none...")
             return 0
+
+        assert _type in ["lower", "upper"], f"Invalid bound type {type}."
 
         _ = self.planner.get_next_action(
             env=obs,
@@ -117,19 +123,24 @@ class BayesianDelegator(Delegator):
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
         )
-
-        self.planner.value_init(env_state=obs, belief_state=existence_beliefs)
-
-        value = self.planner.v_l[
-            (
-                (obs.get_repr(), existence_beliefs.to_tuple()),
-                subtask,
-            )
-        ]
+        if _type == "upper":
+            value = self.planner.v_u[
+                (
+                    (obs.get_repr(), existence_beliefs.to_tuple()),
+                    subtask,
+                )
+            ]
+        else:
+            value = self.planner.v_l[
+                (
+                    (obs.get_repr(), existence_beliefs.to_tuple()),
+                    subtask,
+                )
+            ]
 
         return value
 
-    def prune_subtask_allocs(self, observation, subtask_alloc_probs):
+    def prune_subtask_allocs(self, observation, belief, subtask_alloc_probs):
         """Removing subtask allocs from subtask_alloc_probs that are
         infeasible or where multiple agents are doing None together.
         """
@@ -137,6 +148,7 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 # Remove unreachable/undoable subtask subtask_allocations.
                 if not self.subtask_alloc_is_doable(
+                    belief=belief,
                     env=observation,
                     subtask=t.subtask,
                     subtask_agent_names=t.subtask_agent_names,
@@ -163,7 +175,9 @@ class BayesianDelegator(Delegator):
         self.incomplete_subtasks = incomplete_subtasks
 
         probs = self.get_subtask_alloc_probs()
-        probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
+        probs = self.prune_subtask_allocs(
+            belief=belief, observation=obs, subtask_alloc_probs=probs
+        )
         probs.normalize()
 
         if priors_type == "spatial":
@@ -185,13 +199,25 @@ class BayesianDelegator(Delegator):
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
                     try:
-                        lb = self.get_lower_bound_for_subtask_alloc(
+                        ub = self.get_bound_for_subtask_alloc(
                             obs=copy.copy(obs),
                             existence_beliefs=existence_beliefs,
                             subtask=t.subtask,
                             subtask_agent_names=t.subtask_agent_names,
+                            _type="upper",
                         )
-                        total_weight += 1.0 / float(lb)
+
+                        lb = self.get_bound_for_subtask_alloc(
+                            obs=copy.copy(obs),
+                            existence_beliefs=existence_beliefs,
+                            subtask=t.subtask,
+                            subtask_agent_names=t.subtask_agent_names,
+                            _type="lower",
+                        )
+
+                        expected = (ub + lb) / 2.0
+                        total_weight += 1.0 / float(expected)
+
                     except Exception as e:
                         print(e)
                         import traceback
@@ -204,6 +230,7 @@ class BayesianDelegator(Delegator):
             some_probs.update(
                 subtask_alloc=subtask_alloc, factor=len(t) ** 2.0 * total_weight
             )
+
         return some_probs
 
     def get_other_agent_planners(self, obs, backup_subtask):
@@ -330,27 +357,24 @@ class BayesianDelegator(Delegator):
             )
         )
 
-        qdiffs = [
-            old_q
-            - (
-                (
-                    self.planner.Q(
-                        state=obs_tm1,
-                        belief=b_tm1,
-                        action=nav_action,
-                        value_f=self.planner.v_u,
-                    )
-                    + self.planner.Q(
-                        state=obs_tm1,
-                        belief=b_tm1,
-                        action=nav_action,
-                        value_f=self.planner.v_l,
-                    )
-                )
-                / 2.0
+        qdiffs = []
+
+        for nav_action in valid_nav_actions:
+            q_l = self.planner.Q(
+                state=obs_tm1,
+                belief=b_tm1,
+                action=nav_action,
+                value_f=self.planner.v_l,
             )
-            for nav_action in valid_nav_actions
-        ]
+            q_u = self.planner.Q(
+                state=obs_tm1,
+                belief=b_tm1,
+                action=nav_action,
+                value_f=self.planner.v_u,
+            )
+
+            q = (q_u + q_l) / 2.0
+            qdiffs.append(old_q - q)
 
         softmax_diffs = sp.special.softmax(beta * np.asarray(qdiffs))
         # Taking the softmax of the action actually taken.
@@ -555,6 +579,7 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if not self.subtask_alloc_is_doable(
                     env=obs_tm1,
+                    belief=b_tm1,
                     subtask=t.subtask,
                     subtask_agent_names=t.subtask_agent_names,
                 ):

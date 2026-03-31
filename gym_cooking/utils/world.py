@@ -123,7 +123,7 @@ class World:
         # plt.show()
 
     def get_dist_bound_helper(self, obj_locs, _type):
-        dist = float("inf")
+        dist = self.perimeter + 1
         if _type == "lower":
             bound_locs = self.shared_space_locs
             for a, b in product(obj_locs, bound_locs):
@@ -147,17 +147,13 @@ class World:
                     max_dist = max(max_dist, manhattan_dist(a, b))
                 dist = min(dist, max_dist)
 
-        if dist == float("inf"):
-            breakpoint()
         return dist
 
     def get_direct_dist_between(self, A_locs, B_locs):
-        dist = float("inf")
+        dist = self.perimeter + 1
         for a, b in product(A_locs, B_locs):
             dist = min(dist, manhattan_dist(a, b))
 
-        if dist == float("inf"):
-            breakpoint()
         return dist
 
     def get_dist_bound_between(self, A_locs, B_locs, _type):
@@ -165,7 +161,7 @@ class World:
         assert _type == "lower" or _type == "upper", f"Invalid _type value: {_type}"
 
         # If location exists within both lists then return minimum location, otherwise return bounded location.
-        dist = float("inf")
+        dist = self.perimeter + 1
         if len(A_locs) and len(B_locs):
             # Accounts if there's a bounded shorter distance on the other side.
             dist = min(
@@ -177,8 +173,6 @@ class World:
             obj_locs = A_locs if len(A_locs) else B_locs
             dist = self.get_dist_bound_helper(obj_locs, _type)
 
-        if dist == float("inf"):
-            breakpoint()
         return dist
 
     def is_occupied(self, location):

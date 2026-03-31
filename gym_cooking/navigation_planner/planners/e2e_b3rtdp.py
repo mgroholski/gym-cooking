@@ -7,6 +7,7 @@ from typing import Tuple
 
 import navigation_planner.utils as nav_utils
 import numpy as np
+import recipe_planner.utils as recipe
 from navigation_planner.utils import MinPriorityQueue as mpq
 from utils.interact import interact
 from utils.world import World
@@ -103,8 +104,6 @@ class E2E_B3RTDP:
         # Defining what the goal is for this planner.
         self._define_goal_state(env=env, subtask=subtask)
 
-        self._canonical_beliefs = copy.deepcopy(beliefs)
-
         # Make sure termination counter has been reset.
         self.counter = 0
         self.num_explorations = 0
@@ -157,10 +156,24 @@ class E2E_B3RTDP:
             return None
         else:
             actions = list(self.action_set_b[(cur_state.get_repr(), belief_tuple)])
-            qvals = [
-                self.Q(state=cur_state, belief=cur_belief, action=a, value_f=self.v_l)
-                for a in actions
-            ]
+            qvals = []
+
+            for a in actions:
+                q_u = self.Q(
+                    state=cur_state,
+                    belief=cur_belief,
+                    action=a,
+                    value_f=self.v_u,
+                )
+                q_l = self.Q(
+                    state=cur_state,
+                    belief=cur_belief,
+                    action=a,
+                    value_f=self.v_u,
+                )
+
+                qvals.append((q_u + q_l) / 2.0)
+
             print([x for x in zip(actions, qvals)])
             print(
                 "upper is",
@@ -509,12 +522,9 @@ class E2E_B3RTDP:
                 filter(lambda a: a.name == agent.name, sim_state.sim_agents)
             )[0]
             sim_agent.action = action
-            try:
-                interact(agent=sim_agent, world=sim_state.world)
-            except Exception as e:
-                print("Single")
-                print(e)
-                breakpoint()
+
+            interact(agent=sim_agent, world=sim_state.world)
+
         else:
             agent_1, agent_2 = subtask_agents
             # Corrects so the observable agent is agent_1
@@ -541,50 +551,34 @@ class E2E_B3RTDP:
                     locs.add(loc)
 
             # Min distance of a shared space.
-            min_loc = (-1, -1)
-            min_dist = float("inf")
+            min_shared_loc = (-1, -1)
+            min_shared_dist = float("inf")
             for loc in state.world.shared_space_locs:
                 dist = nav_utils.manhattan_dist(sim_agent_1.location, loc)
-                if dist < min_dist:
-                    min_dist = dist
-                    min_loc = loc
+                if dist < min_shared_dist:
+                    min_shared_dist = dist
+                    min_shared_loc = loc
 
-            # Checks not make sure no objects are viewable
-            if not any(
-                [(loc not in sim_state.world.shared_space_locs) for loc in locs]
-            ):
+            # Checks to make sure no objects are within view
+            if not len(locs):
                 # Check to make sure min_loc is not occupied. If it is, replace the item with
                 # our start obj.
                 start_obj = start_obj[0]
-                start_obj.location = min_loc
-                counter = sim_state.world.get_gridsquare_at(min_loc)
-                if sim_state.world.is_occupied(min_loc):
-                    obj = counter.release()
+                start_obj.location = min_shared_loc
+                shared_counter = sim_state.world.get_gridsquare_at(min_shared_loc)
+                if sim_state.world.is_occupied(min_shared_loc):
+                    obj = shared_counter.release()
                     sim_state.world.remove(obj)
-                counter.acquire(start_obj)
-                sim_state.world.insert(start_obj)
-            elif not any(
-                [(loc not in sim_state.world.shared_space_locs) for loc in locs]
-            ):
-                # Check to make sure min_loc is not occupied
-                start_obj = start_obj[0]
-                start_obj.location = min_loc
-                print(f"Adding {start_obj.name} to {min_loc}")
-                counter = sim_state.world.get_gridsquare_at(min_loc)
-                counter.acquire(start_obj)
+                shared_counter.acquire(start_obj)
                 sim_state.world.insert(start_obj)
             else:
                 # Used for planning purposes
                 if sim_agent_1.observable_cols[0] == 0:
-                    sim_agent_2.location = (min_loc[0] + 1, min_loc[1])
+                    sim_agent_2.location = (min_shared_loc[0] + 1, min_shared_loc[1])
                 else:
-                    sim_agent_2.location = (min_loc[0] - 1, min_loc[1])
-            try:
-                interact(agent=sim_agent_1, world=sim_state.world)
-            except Exception as e:
-                print("Joint")
-                print(e)
-                breakpoint()
+                    sim_agent_2.location = (min_shared_loc[0] - 1, min_shared_loc[1])
+
+            interact(agent=sim_agent_1, world=sim_state.world)
 
         self.repr_init(env_state=sim_state, expected_belief=belief)
         self.value_init(env_state=sim_state, belief_state=belief)
@@ -600,11 +594,6 @@ class E2E_B3RTDP:
             env_state=cur_state, expected_belief=belief
         )
 
-        if _type == "lower" and ((s_repr, belief_tuple), subtask) in self.v_l:
-            return self.v_l[((s_repr, belief_tuple), subtask)]
-        elif _type == "upper" and ((s_repr, belief_tuple), subtask) in self.v_u:
-            return self.v_u[((s_repr, belief_tuple), subtask)]
-
         # Check if this is the desired goal state.
         if self.is_goal_state(s_repr, belief_tuple):
             return 0
@@ -618,7 +607,6 @@ class E2E_B3RTDP:
                         belief=belief,
                         action=action,
                         value_f=self.v_l,
-                        subtask=subtask,
                     )
                     for action in self.get_actions(state_repr=s_repr)
                 ]
@@ -650,6 +638,17 @@ class E2E_B3RTDP:
         _ = self.repr_init(env_state=state, expected_belief=belief)
         self.value_init(env_state=state, belief_state=belief)
 
+        """
+        The current problem is that T builds the goal state which will have a value of 0.
+        I think the current formulation is correct by simulating that the start object will
+        appear. However, since there's an action cost it always favors doing nothing rather than
+        something.
+
+        This should be accounted for by the deliver function.
+        Furthermore, we should also consider transitions where the other agent doesn't
+        act optimally.
+        """
+
         O = self.T(state=state, belief=belief, action=action)
 
         expected_value = 0
@@ -658,6 +657,7 @@ class E2E_B3RTDP:
             ns_repr, ns_belief_tuple = self.repr_init(
                 env_state=next_state, expected_belief=next_beliefs
             )
+
             self.value_init(env_state=next_state, belief_state=next_beliefs)
 
             expected_value += p * value_f[((ns_repr, ns_belief_tuple), subtask)]
@@ -682,6 +682,7 @@ class E2E_B3RTDP:
 
         # Determine lower bound on this environment state.
         lower = env_state.get_bound_for_subtask_given_objs(
+            belief=belief_state,
             subtask=subtask,
             subtask_agent_names=self.subtask_agent_names,
             start_obj=self.start_obj,
@@ -691,6 +692,7 @@ class E2E_B3RTDP:
         )
 
         upper = env_state.get_bound_for_subtask_given_objs(
+            belief=belief_state,
             subtask=subtask,
             subtask_agent_names=self.subtask_agent_names,
             start_obj=self.start_obj,
@@ -712,12 +714,11 @@ class E2E_B3RTDP:
 
     def _define_goal_state(self, env, subtask):
         """Defining a goal state (termination condition on state) for subtask."""
-
         if subtask is None:
             self.is_goal_state = lambda h, b: True
 
         # Termination condition is when desired object is at a Deliver location.
-        elif isinstance(subtask, Deliver):
+        elif isinstance(subtask, recipe.Deliver):
             self.cur_obj_count = len(
                 list(
                     filter(
