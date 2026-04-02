@@ -8,8 +8,8 @@ def interact(agent, world):
     The action that needs to be executed is stored in `agent.action`.
     """
 
-    # agent does nothing (i.e. no arrow key)
-    if agent.action == (0, 0):
+    # agent does nothing (i.e. no arrow key) or communicates
+    if agent.action == (0, 0) or agent.action == (-1, -1):
         return
 
     action_x, action_y = world.inbounds(
@@ -77,6 +77,11 @@ def interact(agent, world):
             else:
                 gs.acquire(obj)  # obj is put onto gridsquare
                 agent.release()
+                if gs.location in world.shared_space_locs:
+                    agent.objs_shared_cnt[obj.full_name] = (
+                        agent.objs_shared_cnt.get(obj.full_name, 0) + 1
+                    )
+
                 assert (
                     world.get_object_at(
                         gs.location, obj, find_held_objects=False
@@ -98,8 +103,11 @@ def interact(agent, world):
                 obj.cook()
             else:
                 gs.release()
-
                 agent.acquire(obj)
+                if gs.location in world.shared_space_locs:
+                    agent.objs_shared_cnt[obj.full_name] = (
+                        agent.objs_shared_cnt.get(obj.full_name, 0) - 1
+                    )
 
         # if empty in front --> interact
         elif not world.is_occupied(gs.location):

@@ -30,7 +30,7 @@ def init_ingredient_belief(obj, obs):
     """
 
     if len(obj.contents) > 1 or (
-        isinstance(obj.contents[0], Food) and obj.contents[0].state_index != 0
+        hasattr(obj.contents[0], "state_index") and obj.contents[0].state_index != 0
     ):
         return 0
 
@@ -117,11 +117,17 @@ class ExistenceBeliefs:
     def __repr__(self):
         return f"ExistenceBeliefs({self.existence_beliefs})"
 
+    def __str__(self):
+        s = ""
+        for state in self.states:
+            s += str(state) + ": " + str(self.existence_beliefs[state]) + "\n"
+        return s
+
     def copy(self):
         return copy.deepcopy(self)
 
     def belief_update(
-        self, obs, observed_joint_action, subtask_alloc_dist, joint_actions, planner
+        self, obs_tm1, observed_joint_action, subtask_alloc_dist, planner
     ):
         """
         Update each binary existence belief using the observed joint action.
@@ -131,8 +137,6 @@ class ExistenceBeliefs:
                 The joint action actually observed at time t.
             subtask_alloc_dist:
                 Distribution over subtask allocations.
-            joint_actions:
-                Iterable of all candidate joint actions.
             Q:
                 Callable with signature:
                     Q(belief, partial_action, subtask) -> float
@@ -151,10 +155,9 @@ class ExistenceBeliefs:
 
             belief_true = self._belief_array_with_clamped_state(state, 1.0)
             like_true = self._likelihood_of_observed_action(
-                obs,
+                obs_tm1,
                 belief_true,
                 subtask_alloc_dist,
-                joint_actions,
                 observed_joint_action,
                 planner,
                 cache=likelihood_dist_cache,
@@ -162,10 +165,9 @@ class ExistenceBeliefs:
 
             belief_false = self._belief_array_with_clamped_state(state, 0.0)
             like_false = self._likelihood_of_observed_action(
-                obs,
+                obs_tm1,
                 belief_false,
                 subtask_alloc_dist,
-                joint_actions,
                 observed_joint_action,
                 planner,
                 cache=likelihood_dist_cache,
@@ -183,10 +185,9 @@ class ExistenceBeliefs:
 
     def _likelihood_of_observed_action(
         self,
-        obs,
-        belief,
+        obs_tm1,
+        belief_tm1,
         subtask_alloc_dist,
-        joint_action_set,
         observed_joint_action,
         planner,
         cache=None,
@@ -195,76 +196,100 @@ class ExistenceBeliefs:
         Return P(observed_joint_action | belief, H) by first constructing the
         normalized action distribution.
         """
-        cache_key = (obs.get_repr(), belief.to_tuple())
+        cache_key = (obs_tm1.get_repr(), belief_tm1.to_tuple())
 
         if cache is not None and cache_key in cache:
             action_dist = cache[cache_key]
         else:
             action_dist = self._likelihood_helper(
-                obs=obs,
-                belief=belief,
+                obs_tm1=obs_tm1,
+                belief_tm1=belief_tm1,
                 subtask_alloc_dist=subtask_alloc_dist,
-                joint_action_set=joint_action_set,
                 planner=planner,
             )
             if cache is not None:
                 cache[cache_key] = action_dist
+
+        if not action_dist:
+            return self._fallback_action_prob(
+                obs_tm1=obs_tm1,
+                observed_joint_action=observed_joint_action,
+            )
 
         if observed_joint_action not in action_dist:
             breakpoint()
 
         return action_dist[observed_joint_action]
 
+    def _fallback_action_prob(self, obs_tm1, observed_joint_action):
+        """
+        Fallback probability when no action distribution exists.
+        Mirrors the None-subtask action selection logic from RealAgent.plan.
+        """
+        none_action_prob = getattr(obs_tm1, "none_action_prob", None)
+        if none_action_prob is None:
+            none_action_prob = 1.0
+
+        joint_prob = 1.0
+        for sim_agent, action in zip(obs_tm1.sim_agents, observed_joint_action):
+            if sim_agent.location is not None:
+                actions = nav_utils.get_single_actions(env=obs_tm1, agent=sim_agent)
+                if len(actions) <= 1:
+                    action_prob = 1.0 if action == (0, 0) else 0.0
+                elif action == (0, 0):
+                    action_prob = none_action_prob
+                else:
+                    action_prob = (1.0 - none_action_prob) / (len(actions) - 1)
+                joint_prob *= action_prob
+
+        return joint_prob
+
     def _likelihood_helper(
         self,
-        obs,
-        belief,
+        obs_tm1,
+        belief_tm1,
         subtask_alloc_dist,
-        joint_action_set,
         planner,
     ):
         """
-        P(a_t|b_t^(X)) = (Sigma_ta Prod_i exp (Beta * Q(b_t^(X), a_t))P(ta|H_{t-1})) / (Sigma a_t Sigma_ta Prod_i exp (Beta * Q(b_t^(X), a_t))P(ta|H_{t-1}))
+        P(a_t|b_t^(X)) = (Sigma_ta Prod_i exp (Beta * Q(b_t^(X), a_t))P(ta|H_{t-1})) / ( Sigma_ta Sigma a_t Prod_i exp (Beta * Q(b_t^(X), a_t))P(ta|H_{t-1}))
         P(ta|H_{t-1}) = the task allocation belief at the last timestep
         """
 
         total_score = 0.0
         action_prob = {}
-        for joint_action in joint_action_set:
-            action_prob[joint_action] = 0.0
-            for subtask_alloc, alloc_prob in subtask_alloc_dist.get_list():
-                if alloc_prob <= 0.0:
-                    continue
+        for subtask_alloc, alloc_prob in subtask_alloc_dist.get_list():
+            if alloc_prob <= 0.0:
+                continue
 
-                log_weight = 0.0
+            log_weight_by_action = {}
 
-                for subtask, subtask_agents in subtask_alloc:
-                    planner.set_settings(
-                        env=obs,
-                        beliefs=belief,
-                        subtask=subtask,
-                        subtask_agent_names=subtask_agents,
+            for subtask, subtask_agents in subtask_alloc:
+                planner.set_settings(
+                    env=obs_tm1,
+                    beliefs=belief_tm1,
+                    subtask=subtask,
+                    subtask_agent_names=subtask_agents,
+                )
+
+                joint_actions = planner.get_actions(obs_tm1.get_repr())
+                for joint_action in joint_actions:
+                    q_val = float(
+                        planner.Q(obs_tm1, belief_tm1, joint_action, planner.v_l)
+                    )
+                    log_weight_by_action[joint_action] = (
+                        log_weight_by_action.get(joint_action, 0.0) + self.beta * q_val
                     )
 
-                    for agent_name in subtask_agents:
-                        agent_idx = int(agent_name.split("-")[-1], 10) - 1
-                        action = joint_action[agent_idx]
-                        if action is not None:
-                            q_val = (
-                                float(planner.Q(obs, belief, action, planner.v_u))
-                                + float(planner.Q(obs, belief, action, planner.v_l))
-                            ) / 2.0
-                            log_weight += self.beta * q_val
-
+            for joint_action, log_weight in log_weight_by_action.items():
                 score = float(alloc_prob) * math.exp(log_weight)
-                action_prob[joint_action] += +score
+                action_prob[joint_action] = action_prob.get(joint_action, 0.0) + score
                 total_score += score
 
-        if total_score == 0.0:
-            print("0 total score.")
-            breakpoint()
-
         # Normalize
+        if total_score == 0:
+            return action_prob
+
         for joint_action in action_prob:
             action_prob[joint_action] /= total_score
 
@@ -296,11 +321,16 @@ class ExistenceBeliefs:
         """
         Discretize each probability to the nearest multiple of 1 / D.
         """
-        discretized = {}
+        try:
+            discretized = {}
 
-        for state in self.states:
-            prob = self._clamp_prob(self.existence_beliefs[state])
-            discretized_prob = round(prob * self.D) / self.D
-            discretized[state] = self._clamp_prob(discretized_prob)
+            for state in self.states:
+                prob = self._clamp_prob(self.existence_beliefs[state])
+                discretized_prob = round(prob * self.D) / self.D
+                discretized[state] = self._clamp_prob(discretized_prob)
 
-        return discretized
+            return discretized
+
+        except Exception as e:
+            print(e)
+            breakpoint()

@@ -58,6 +58,7 @@ class BayesianDelegator(Delegator):
         """
         if self.probs is None:
             return True
+
         # Get currently available subtasks.
         self.incomplete_subtasks = incomplete_subtasks
         probs = self.get_subtask_alloc_probs()
@@ -107,7 +108,7 @@ class BayesianDelegator(Delegator):
         return distance < env.world.perimeter
 
     def get_bound_for_subtask_alloc(
-        self, obs, existence_beliefs, subtask, subtask_agent_names, _type
+        self, obs, existence_beliefs, subtask, subtask_agent_names, task_alloc_probs
     ):
         """Return the value bound for a subtask allocation
         (subtask x subtask_agent_names)."""
@@ -115,7 +116,14 @@ class BayesianDelegator(Delegator):
             print("Subtask is none...")
             return 0
 
-        assert _type in ["lower", "upper"], f"Invalid bound type {type}."
+        obs_repr = obs.get_repr()
+        existence_beliefs_tuple = existence_beliefs.to_tuple()
+
+        # We ideally want to implement the expectation right here
+        # However, the value_init from the lower level planner uses the underlying heuristics.
+        # So, the underlying planner is our best best.
+        #
+        # We'll want to pass probabilities into the planner.
 
         _ = self.planner.get_next_action(
             env=obs,
@@ -123,22 +131,15 @@ class BayesianDelegator(Delegator):
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
         )
-        if _type == "upper":
-            value = self.planner.v_u[
-                (
-                    (obs.get_repr(), existence_beliefs.to_tuple()),
-                    subtask,
-                )
-            ]
-        else:
-            value = self.planner.v_l[
-                (
-                    (obs.get_repr(), existence_beliefs.to_tuple()),
-                    subtask,
-                )
-            ]
 
-        return value
+        value_l = self.planner.v_l[
+            (
+                (obs_repr, existence_beliefs_tuple),
+                subtask,
+            )
+        ]
+
+        return value_l
 
     def prune_subtask_allocs(self, observation, belief, subtask_alloc_probs):
         """Removing subtask allocs from subtask_alloc_probs that are
@@ -199,24 +200,15 @@ class BayesianDelegator(Delegator):
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
                     try:
-                        ub = self.get_bound_for_subtask_alloc(
-                            obs=copy.copy(obs),
+                        b = self.get_bound_for_subtask_alloc(
+                            obs=obs,
                             existence_beliefs=existence_beliefs,
                             subtask=t.subtask,
                             subtask_agent_names=t.subtask_agent_names,
-                            _type="upper",
+                            task_alloc_probs=some_probs,
                         )
 
-                        lb = self.get_bound_for_subtask_alloc(
-                            obs=copy.copy(obs),
-                            existence_beliefs=existence_beliefs,
-                            subtask=t.subtask,
-                            subtask_agent_names=t.subtask_agent_names,
-                            _type="lower",
-                        )
-
-                        expected = (ub + lb) / 2.0
-                        total_weight += 1.0 / float(expected)
+                        total_weight += 1.0 / float(b)
 
                     except Exception as e:
                         print(e)
@@ -264,30 +256,14 @@ class BayesianDelegator(Delegator):
                 planners[other_agent_name] = planner
         return planners
 
-    def get_appropriate_state_and_other_agent_planners(
-        self, obs_tm1, backup_subtask, no_level_1
-    ):
-        """Return Level 1 planner if no_level_1 is False, otherwise
-        return a Level 0 Planner."""
-        # Get appropriate observation.
-        if no_level_1:
-            # Level 0 planning: Just use obs_tm1.
-            state = obs_tm1
-            # Assume other agents are fixed.
-            other_planners = {}
-        else:
-            # Level 1 planning: Modify the state according to my beliefs.
-            state, _ = self.planner._get_modified_state_with_other_agent_actions(
-                state=obs_tm1,
-            )
-            # Get other agent planners under my current beliefs.
-            other_planners = self.get_other_agent_planners(
-                obs=obs_tm1, backup_subtask=backup_subtask
-            )
-        return state, other_planners
-
     def prob_nav_actions(
-        self, obs_tm1, b_tm1, action_tm1, subtask, subtask_agent_names, beta, no_level_1
+        self,
+        obs_tm1,
+        b_tm1,
+        actions_tm1,
+        subtask,
+        subtask_agent_names,
+        beta,
     ):
         """Return probabability that subtask_agents performed subtask, given
         previous belief state.
@@ -309,7 +285,6 @@ class BayesianDelegator(Delegator):
                 str(subtask), " & ".join(subtask_agent_names)
             )
         )
-
         assert len(subtask_agent_names) == 1 or len(subtask_agent_names) == 2
 
         # Perform inference over None subtasks.
@@ -326,59 +301,40 @@ class BayesianDelegator(Delegator):
             diffs = [self.none_action_prob] + [action_prob] * num_actions
             softmax_diffs = sp.special.softmax(beta * np.asarray(diffs))
             # Probability agents did nothing for None subtask.
-            if action_tm1 == (0, 0):
+            if actions_tm1[subtask_agent_names[0]] == (0, 0):
                 return softmax_diffs[0]
             # Probability agents moved for None subtask.
             else:
                 return softmax_diffs[1]
 
-        old_q_u = self.planner.Q(
-            state=obs_tm1,
-            belief=b_tm1,
-            action=action_tm1,
-            value_f=self.planner.v_u,
-        )
-        old_q_l = self.planner.Q(
-            state=obs_tm1,
-            belief=b_tm1,
-            action=action_tm1,
-            value_f=self.planner.v_l,
+        action = tuple([actions_tm1[a_name] for a_name in subtask_agent_names])
+        if len(subtask_agent_names) == 1:
+            action = action[0]
+
+        self.planner.set_settings(
+            env=obs_tm1,
+            beliefs=b_tm1,
+            subtask=subtask,
+            subtask_agent_names=subtask_agent_names,
         )
 
-        old_q = (old_q_u + old_q_l) / 2.0
-
-        valid_nav_actions = self.planner.get_actions(state_repr=obs_tm1.get_repr())
-
-        assert action_tm1 in valid_nav_actions, (
-            "valid_nav_actions: {}\nlocs: {}\naction: {}".format(
-                valid_nav_actions,
-                list(filter(lambda a: a.location, obs_tm1.sim_agents)),
-                action_tm1,
-            )
+        old_q = self.planner.Q(
+            state=obs_tm1, belief=b_tm1, action=action, value_f=self.planner.v_l
         )
 
-        qdiffs = []
+        valid_nav_actions = self.planner.get_actions(obs_tm1.get_repr())
 
-        for nav_action in valid_nav_actions:
-            q_l = self.planner.Q(
-                state=obs_tm1,
-                belief=b_tm1,
-                action=nav_action,
-                value_f=self.planner.v_l,
+        # Calculating the softmax Q_{subtask} for each action.
+        qdiffs = [
+            old_q
+            - self.planner.Q(
+                state=obs_tm1, belief=b_tm1, action=nav_action, value_f=self.planner.v_l
             )
-            q_u = self.planner.Q(
-                state=obs_tm1,
-                belief=b_tm1,
-                action=nav_action,
-                value_f=self.planner.v_u,
-            )
-
-            q = (q_u + q_l) / 2.0
-            qdiffs.append(old_q - q)
-
+            for nav_action in valid_nav_actions
+        ]
         softmax_diffs = sp.special.softmax(beta * np.asarray(qdiffs))
         # Taking the softmax of the action actually taken.
-        return softmax_diffs[valid_nav_actions.index(action_tm1)]
+        return softmax_diffs[valid_nav_actions.index(action)]
 
     def get_other_subtask_allocations(
         self, remaining_agents, remaining_subtasks, base_subtask_alloc
@@ -572,7 +528,7 @@ class BayesianDelegator(Delegator):
 
     def bayes_update(self, obs_tm1, b_tm1, a_tm1, beta):
         """Apply Bayesian update based on previous observation (obs_tms1)
-        and most recent actions taken (actions_tm1). Beta is used to determine
+        and most recent actions taken (action_tm1). Beta is used to determine
         how rational agents act."""
         # First, remove unreachable/undoable subtask agent subtask_allocs.
         for subtask_alloc in self.probs.enumerate_subtask_allocs():
@@ -600,21 +556,19 @@ class BayesianDelegator(Delegator):
                         update += self.prob_nav_actions(
                             obs_tm1=copy.copy(obs_tm1),
                             b_tm1=b_tm1,
-                            action_tm1=a_tm1,
+                            actions_tm1=a_tm1,
                             subtask=t.subtask,
                             subtask_agent_names=t.subtask_agent_names,
                             beta=beta,
-                            no_level_1=False,
                         )
                 else:
                     p = self.prob_nav_actions(
                         obs_tm1=copy.copy(obs_tm1),
                         b_tm1=b_tm1,
-                        action_tm1=a_tm1,
+                        actions_tm1=a_tm1,
                         subtask=t.subtask,
                         subtask_agent_names=t.subtask_agent_names,
                         beta=beta,
-                        no_level_1=False,
                     )
                     update += len(t.subtask_agent_names) * p
 

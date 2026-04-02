@@ -39,7 +39,6 @@ class World:
         new.__dict__ = self.__dict__.copy()
         new.objects = copy.deepcopy(self.objects)
         new.order_queue = copy.deepcopy(self.order_queue)
-        new.reachability_graph = self.reachability_graph
         return new
 
     def update_display(self):
@@ -65,71 +64,16 @@ class World:
             if isinstance(obj, GridSquare):
                 self.loc_to_gridsquare[obj.location] = obj
 
-    def make_reachability_graph(self):
-        """Create a reachability graph between world objects."""
-        self.reachability_graph = nx.Graph()
-        for x in range(self.width):
-            for y in range(self.height):
-                location = (x, y)
-                gs = self.loc_to_gridsquare[(x, y)]
-
-                # If not collidable, add node with direction (0, 0).
-                if not gs.collidable:
-                    self.reachability_graph.add_node((location, (0, 0)))
-
-                # Add nodes for collidable gs + all edges.
-                for nav_action in World.NAV_ACTIONS:
-                    new_location = self.inbounds(
-                        location=tuple(np.asarray(location) + np.asarray(nav_action))
-                    )
-                    new_gs = self.loc_to_gridsquare[new_location]
-
-                    # If collidable, add edges for adjacent noncollidables.
-                    if gs.collidable and not new_gs.collidable:
-                        self.reachability_graph.add_node((location, nav_action))
-                        if (new_location, (0, 0)) in self.reachability_graph:
-                            self.reachability_graph.add_edge(
-                                (location, nav_action), (new_location, (0, 0))
-                            )
-                    # If not collidable and new_gs collidable, add edge.
-                    elif not gs.collidable and new_gs.collidable:
-                        if (
-                            new_location,
-                            tuple(-np.asarray(nav_action)),
-                        ) in self.reachability_graph:
-                            self.reachability_graph.add_edge(
-                                (location, (0, 0)),
-                                (new_location, tuple(-np.asarray(nav_action))),
-                            )
-                    # If both not collidable, add direct edge.
-                    elif not gs.collidable and not new_gs.collidable:
-                        if (new_location, (0, 0)) in self.reachability_graph:
-                            self.reachability_graph.add_edge(
-                                (location, (0, 0)), (new_location, (0, 0))
-                            )
-                    # If both collidable, add nothing.
-
-        # If you want to visualize this graph, uncomment below.
-        # plt.figure(figsize=(10, 8))
-
-        # G = self.reachability_graph
-        # pos = nx.spring_layout(G, k=10.0, iterations=10000, seed=42)
-
-        # nx.draw(G, pos, with_labels=True, node_color="lightblue", edge_color="gray")
-
-        # edge_labels = nx.get_edge_attributes(G, "label")
-        # nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
-
-        # plt.show()
-
-    def get_dist_bound_helper(self, obj_locs, _type):
-        dist = self.perimeter + 1
+    def get_dist_bound_helper(self, loc, _type):
         if _type == "lower":
+            dist = self.perimeter + 1
             bound_locs = self.shared_space_locs
-            for a, b in product(obj_locs, bound_locs):
+            for a, b in product([loc], bound_locs):
                 # Other agent cannot exist at shared location so we add one.
                 dist = min(dist, manhattan_dist(a, b) + 1)
         elif _type == "upper":
+            dist = 0
+            shared_counters = self.shared_space_locs
             bound_locs = [
                 (0, 1),
                 (1, 0),
@@ -141,37 +85,25 @@ class World:
                 (self.width, self.height - 1),
             ]
 
-            for a in obj_locs:
-                max_dist = 0
-                for b in bound_locs:
-                    max_dist = max(max_dist, manhattan_dist(a, b))
-                dist = min(dist, max_dist)
+            max_dist = 0
+            max_shared_counter = (-1, -1)
 
-        return dist
+            for bound_loc, shared_counter in product(bound_locs, shared_counters):
+                d = manhattan_dist(bound_loc, shared_counter)
+                if d > max_dist:
+                    max_dist = d
+                    max_shared_counter = shared_counter
 
-    def get_direct_dist_between(self, A_locs, B_locs):
-        dist = self.perimeter + 1
-        for a, b in product(A_locs, B_locs):
-            dist = min(dist, manhattan_dist(a, b))
-
-        return dist
-
-    def get_dist_bound_between(self, A_locs, B_locs, _type):
-        """Return distance bound between A_locs and B_locs locations."""
-        assert _type == "lower" or _type == "upper", f"Invalid _type value: {_type}"
-
-        # If location exists within both lists then return minimum location, otherwise return bounded location.
-        dist = self.perimeter + 1
-        if len(A_locs) and len(B_locs):
-            # Accounts if there's a bounded shorter distance on the other side.
-            dist = min(
-                self.get_direct_dist_between(A_locs, B_locs),
-                self.get_dist_bound_helper(B_locs, _type),
-                self.get_dist_bound_helper(A_locs, _type),
-            )
+            dist = manhattan_dist(max_shared_counter, loc) - 2 + max_dist * 2
         else:
-            obj_locs = A_locs if len(A_locs) else B_locs
-            dist = self.get_dist_bound_helper(obj_locs, _type)
+            raise Exception(f"Invalid _type: {_type}")
+
+        return dist
+
+    def get_direct_dist_between(self, A_loc, B_locs):
+        dist = self.perimeter + 1
+        for a, b in product([A_loc], B_locs):
+            dist = min(dist, manhattan_dist(a, b))
 
         return dist
 
@@ -305,6 +237,18 @@ class World:
                 )
             )
 
+    def get_all_non_delivered_object_locs(self, obj):
+        held_locs = set(self.get_object_locs(obj=obj, is_held=True))
+        unheld_locs = set(self.get_object_locs(obj=obj, is_held=False))
+
+        non_delivered_unheld_locs = [
+            loc
+            for loc in unheld_locs
+            if not self.get_object_at(loc, obj, False, False).is_delivered
+        ]
+
+        return list(held_locs.union(non_delivered_unheld_locs))
+
     def get_all_object_locs(self, obj):
         return list(
             set(
@@ -313,7 +257,7 @@ class World:
             )
         )
 
-    def get_object_at(self, location, desired_obj, find_held_objects):
+    def get_object_at(self, location, desired_obj, find_held_objects, duplicate=True):
         # Map obj => location => filter by location => return that object.
         all_objs = self.get_object_list()
 
@@ -346,7 +290,7 @@ class World:
         )
 
         gs = self.get_gridsquare_at(location)
-        if gs.is_dispenser:
+        if gs.is_dispenser and duplicate:
             obj_copy = copy.deepcopy(objs[0])
             self.insert(obj_copy)
             return obj_copy

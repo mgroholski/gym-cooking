@@ -230,7 +230,7 @@ def main_loop(arglist):
 
         # Agents
         for idx, agent in enumerate(real_agents):
-            agent.refresh_subtasks(world=obs.get_agent_obs(idx).world)
+            agent.refresh_subtasks(env=obs.get_agent_obs(idx))
 
         # Saving info
         bag.add_status(cur_time=info["t"], real_agents=real_agents)

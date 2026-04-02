@@ -197,6 +197,7 @@ class Object:
         new = Object(self.location, self.contents[0])
         new.__dict__ = self.__dict__.copy()
         new.contents = [copy.copy(c) for c in self.contents]
+        new.is_delivered = self.is_delivered
         return new
 
     def get_repr(self):

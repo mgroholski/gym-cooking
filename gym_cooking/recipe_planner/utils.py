@@ -73,6 +73,9 @@ class ActionCntWrapper:
         self.action = action
         self.cnt = cnt
 
+    def __str__(self):
+        return f"{self.action}x{self.cnt}"
+
 
 class Action:
     def __init__(self, name, pre, post_add):

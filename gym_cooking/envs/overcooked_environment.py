@@ -250,7 +250,6 @@ class OvercookedEnvironment(gym.Env):
         self.initialize_order_queue()
         self.all_subtasks = self.run_recipes()
         self.world.make_loc_to_gridsquare()
-        self.world.make_reachability_graph()
         self.obs_tm1 = copy.copy(self)
 
         if self.arglist.record or self.arglist.with_image_obs:
@@ -289,6 +288,7 @@ class OvercookedEnvironment(gym.Env):
         # Visualize.
         self.display()
         self.print_agents()
+        print("Environment Repr: \n", self.get_repr())
         if self.arglist.record:
             self.game.save_image_obs(self.t)
 
@@ -343,8 +343,9 @@ class OvercookedEnvironment(gym.Env):
     def update_display(self):
         self.rep = self.world.update_display()
         for agent in self.sim_agents:
-            x, y = agent.location
-            self.rep[y][x] = str(agent)
+            if agent.location is not None:
+                x, y = agent.location
+                self.rep[y][x] = str(agent)
 
     def is_collision(self, agent1_loc, agent2_loc, agent1_action, agent2_action):
         """Returns whether agents are colliding.
@@ -438,13 +439,15 @@ class OvercookedEnvironment(gym.Env):
         if self.arglist.partially_observable:
             new_order_prob = self.arglist.r
             if len(self.hidden_order_queue) and (
-                (not len(self.order_queue)) or (np.random.random() < new_order_prob)
+                all([o.is_complete for o in self.order_queue])
+                or (np.random.random() < new_order_prob)
             ):
                 self.add_order_to_queue()
 
     def get_bound_for_subtask_given_objs(
         self,
         belief,
+        task_alloc_probs
         subtask,
         subtask_agent_names,
         start_obj,
@@ -454,35 +457,11 @@ class OvercookedEnvironment(gym.Env):
     ):
         """Return the bound under this subtask between objects."""
 
-        if (self.get_repr(), belief.to_tuple()) not in self.h_store:
-            self.build_heuristic(belief)
-
-        h_l = self.h_store[(self.get_repr(), belief.to_tuple())]["h_l"]
-        h_u = self.h_store[(self.get_repr(), belief.to_tuple())]["h_u"]
-
-        agent_locs = []
-        null_obs_penalty = 0.0
-
         # Calculate extra holding penalty if the object is irrelevant.
         holding_penalty = 0.0
         HOLDING_PENALTY = 1.0
+
         for agent in self.sim_agents:
-            if agent.location is not None:
-                agent_locs.append(agent.location)
-
-            if agent.action is None and subtask.is_joint:
-                start_obj, _ = nav_utils.get_subtask_obj(subtask)
-                if not isinstance(start_obj, list):
-                    start_obj = [start_obj]
-
-                locs = set()
-                for obj in start_obj:
-                    for loc in self.world.get_all_object_locs(obj):
-                        locs.add(loc)
-
-                if not any([loc not in self.world.shared_space_locs for loc in locs]):
-                    null_obs_penalty += 1.0
-
             if agent.name in subtask_agent_names:
                 # Check for whether the agent is holding something.
                 if agent.holding is not None:
@@ -494,9 +473,14 @@ class OvercookedEnvironment(gym.Env):
                             # Add one "distance"-unit cost
                             holding_penalty += HOLDING_PENALTY
 
-        holding_penalty = min(holding_penalty, HOLDING_PENALTY)
+        visible_agents = [
+            agent for agent in self.sim_agents if agent.location is not None
+        ]
+        assert len(visible_agents) == 1, f"Have {len(visible_agents)} visible agents."
+        agent = visible_agents[0]
 
-        penalty = holding_penalty + null_obs_penalty
+        holding_penalty = min(holding_penalty, HOLDING_PENALTY)
+        penalty = holding_penalty
 
         A_locs, B_locs = self.get_AB_locs_given_objs(
             subtask, subtask_agent_names, start_obj, goal_obj, action_obj
@@ -504,18 +488,16 @@ class OvercookedEnvironment(gym.Env):
 
         if len(subtask_agent_names) == 1:
             # Single task
-            dist = float("inf")
-
-            for agent_loc in agent_locs:
-                for a_loc in A_locs:
-                    agent_to_a_dist = nav_utils.manhattan_dist(agent_loc, a_loc)
-                    if agent_to_a_dist < dist:
-                        for b_loc in B_locs:
-                            dist = min(
-                                dist,
-                                nav_utils.manhattan_dist(a_loc, b_loc)
-                                + agent_to_a_dist,
-                            )
+            dist = self.world.perimeter + 1
+            agent_loc = agent.location
+            for a_loc in A_locs:
+                agent_to_a_dist = nav_utils.manhattan_dist(agent_loc, a_loc)
+                if agent_to_a_dist < dist:
+                    for b_loc in B_locs:
+                        dist = min(
+                            dist,
+                            nav_utils.manhattan_dist(a_loc, b_loc) + agent_to_a_dist,
+                        )
                 # If merge recipe, agent can pick up object B before object A
                 if isinstance(subtask, recipe.Merge):
                     for b_loc in B_locs:
@@ -531,271 +513,288 @@ class OvercookedEnvironment(gym.Env):
             return dist + penalty
         else:
             # Joint task
-            # h_b(x_m) (calculated in build_heuristic in world.py) + holding_penalty
-            if not isinstance(start_obj, List):
-                start_obj = [start_obj]
+            # See paper
+            nearest_shared_space_loc = (-1, -1)
+            min_dist = float("inf")
+            agent_loc = agent.location
+            for loc in self.world.shared_space_locs:
+                dist = nav_utils.manhattan_dist(agent_loc, loc)
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_shared_space_loc = loc
 
-            h = 0
-            for obj in start_obj:
-                if _type == "lower":
-                    h += h_l[obj.full_name]
-                elif _type == "upper":
-                    h += h_u[obj.full_name]
+            # Adjust to an area the agent can be
+            if agent.observable_cols[0] == 0:
+                nearest_shared_space_loc = (
+                    nearest_shared_space_loc[0] - 1,
+                    nearest_shared_space_loc[1],
+                )
+            else:
+                nearest_shared_space_loc = (
+                    nearest_shared_space_loc[0] + 1,
+                    nearest_shared_space_loc[1],
+                )
 
-            if action_obj is not None:
-                if _type == "lower":
-                    h += h_l[action_obj.name]
-                elif _type == "upper":
-                    h += h_u[action_obj.name]
+            if isinstance(subtask, recipe.Chop) or isinstance(subtask, recipe.Cook):
+                belief_so, belief_ao = (
+                    belief[start_obj.full_name],
+                    belief[action_obj.name],
+                )
+                belief_not_so, belief_not_ao = 1 - belief_so, 1 - belief_ao
 
-            return h + penalty
-
-    def build_heuristic(self, beliefs):
-        """Computes the heuristics for each unique subtask."""
-        # h_b(x) = b(x)d_{use}(x) + b(not x)d_{fail}(x)
-        """
-        d_{use} shoud be the distance of the closest object whether it exists or not
-        d_{fail} should be the distance of recreating the object in case of a failure.
-        """
-
-        ordered_subtasks_by_recipe = self.ordered_subtasks_by_recipe
-
-        h_u = {}
-        h_l = {}
-
-        agent_locs = [a.location for a in self.sim_agents if a.location is not None]
-        max_bound_loc = self.world.get_dist_bound_helper(agent_locs, "upper")
-
-        # Add plate to h_u and h_l
-        plate = Plate()
-        plate_obj = Object((-1, -1), [plate])
-
-        plate_belief = beliefs[plate_obj.full_name]
-        plate_locs = self.world.get_all_object_locs(plate_obj)
-
-        expected_failure = (
-            0
-            if plate_belief == 1
-            else (
-                (1 - plate_belief)
-                * self.world.get_direct_dist_between(agent_locs, plate_locs)
-            )
-        )
-
-        h_u[plate_obj.name] = (
-            plate_belief
-            * self.world.get_dist_bound_between(agent_locs, plate_locs, "upper")
-            + expected_failure
-        )
-
-        h_l[plate_obj.name] = (
-            plate_belief
-            * self.world.get_dist_bound_between(agent_locs, plate_locs, "lower")
-            + expected_failure
-        )
-        plate_name = plate_obj.name
-        del plate_obj
-        del plate
-
-        seen_subtask = set([recipe.Get(plate_name)])
-        for subtasks in ordered_subtasks_by_recipe.values():
-            for subtask in subtasks:
-                if subtask in seen_subtask:
-                    continue
-                seen_subtask.add(subtask)
-
-                # Subtask action object heuristic
-                subtask_action_obj = nav_utils.get_subtask_action_obj(subtask=subtask)
-                if subtask_action_obj is not None:
-                    action_obj_belief = beliefs[subtask_action_obj.name]
-                    subtask_action_obj_locs = self.world.get_all_object_locs(
-                        subtask_action_obj
-                    )
-
-                    expected_failure = (
-                        0
-                        if action_obj_belief == 1
-                        else (
-                            (1 - action_obj_belief)
-                            * self.world.get_direct_dist_between(
-                                agent_locs, subtask_action_obj_locs
+                term1 = 0
+                if belief_so > 0 and belief_ao > 0:
+                    term1 = (
+                        belief_so
+                        * belief_ao
+                        * (
+                            self.world.get_dist_bound_helper(agent_loc, _type)
+                            + self.world.get_dist_bound_helper(
+                                nearest_shared_space_loc, _type
                             )
                         )
                     )
 
-                    h_u[subtask_action_obj.name] = (
-                        action_obj_belief
-                        * self.world.get_dist_bound_between(
-                            agent_locs, subtask_action_obj_locs, "upper"
+                term2 = 0
+                if belief_so > 0 and belief_not_ao > 0:
+                    action_obj_locs = self.world.get_all_object_locs(action_obj)
+                    term2 = (
+                        belief_so
+                        * belief_not_ao
+                        * (
+                            self.world.get_dist_bound_helper(agent_loc, _type)
+                            + self.world.get_direct_dist_between(
+                                nearest_shared_space_loc,
+                                action_obj_locs,
+                            )
                         )
-                        + expected_failure
                     )
 
-                    h_l[subtask_action_obj.name] = (
-                        action_obj_belief
-                        * self.world.get_dist_bound_between(
-                            agent_locs, subtask_action_obj_locs, "lower"
+                term3 = 0
+                if belief_not_so > 0 and belief_ao > 0:
+                    start_obj_locs = self.world.get_all_object_locs(start_obj)
+                    comp_func = lambda v: max(v, term3)
+                    if _type == "lower":
+                        term3 = self.world.perimeter + 1
+                        comp_func = lambda v: min(v, term3)
+
+                    for start_obj_loc in start_obj_locs:
+                        v = (
+                            belief_not_so
+                            * belief_ao
+                            * (
+                                self.world.get_direct_dist_between(
+                                    agent_loc, [start_obj_loc]
+                                )
+                                + (
+                                    self.world.get_dist_bound_helper(
+                                        start_obj_loc, _type
+                                    )
+                                )  # Subtract one because we're not precisely @ start_obj_loc but rather one place inner map
+                            )
                         )
-                        + expected_failure
+
+                        term3 = comp_func(v)
+
+                term4 = 0
+                if belief_not_so > 0 and belief_not_ao > 0:
+                    start_obj_locs = self.world.get_all_non_delivered_object_locs(
+                        start_obj
                     )
+                    action_obj_locs = self.world.get_all_object_locs(action_obj)
 
-                start_obj, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
-                goal_obj_belief = beliefs[goal_obj.full_name]
-                goal_obj_locs = self.world.get_all_object_locs(goal_obj)
+                    for start_obj_loc in start_obj_locs:
+                        term4 = min(
+                            term4,
+                            self.world.get_direct_dist_between(
+                                agent_loc, [start_obj_loc]
+                            )
+                            + (
+                                self.world.get_direct_dist_between(
+                                    start_obj_loc, action_obj_locs
+                                )
+                            ),  # Subtract one because we're not precisely @ start_obj_loc but rather one place inner map
+                        )
 
-                # If the subtask involves fresh food (e.g. chop, cook, get)
-                if not isinstance(subtask, recipe.Merge) and not isinstance(
-                    subtask, recipe.Deliver
-                ):
-                    if len(start_obj.contents) == 1:
-                        # Heuristic for fresh food.
-                        if start_obj.contents[0].state_index == 0:
-                            start_obj_locs = self.world.get_all_object_locs(start_obj)
-                            start_obj_belief = beliefs[start_obj.full_name]
+                    term4 *= belief_not_so * belief_not_ao
+                h = term1 + term2 + term3 + term4
+            elif isinstance(subtask, recipe.Merge):
+                so_1_locs, so_2_locs = (
+                    self.world.get_all_non_delivered_object_locs(start_obj[0]),
+                    self.world.get_all_non_delivered_object_locs(start_obj[1]),
+                )
 
-                            expected_failure = (
-                                0
-                                if start_obj_belief == 1
-                                else (
-                                    (1 - start_obj_belief)
-                                    * self.world.get_direct_dist_between(
-                                        agent_locs, start_obj_locs
+                belief_so_1, belief_so_2 = (
+                    belief[start_obj[0].full_name],
+                    belief[start_obj[1].full_name],
+                )
+                if len(so_1_locs) and len(so_2_locs):
+                    h = self.world.perimeter + 1
+                    for so_1_loc in so_1_locs:
+                        for so_2_loc in so_2_locs:
+                            h = min(
+                                h,
+                                (
+                                    self.world.get_direct_dist_between(
+                                        agent_loc, [so_1_loc]
+                                    )
+                                    + self.world.get_direct_dist_between(
+                                        so_1_loc, [so_2_loc]
+                                    )
+                                ),
+                                (
+                                    self.world.get_direct_dist_between(
+                                        agent_loc, [so_2_loc]
+                                    )
+                                    + self.world.get_direct_dist_between(
+                                        so_2_loc, [so_1_loc]
+                                    )
+                                ),
+                            )
+                elif len(so_1_locs) > 0 and belief_so_2 == 1:
+                    h = self.world.perimeter + 1
+                    for so_1_loc in so_1_locs:
+                        h = min(
+                            h,
+                            (
+                                self.world.get_direct_dist_between(
+                                    agent_loc, [so_1_loc]
+                                )
+                                + self.world.get_dist_bound_helper(so_1_loc, _type)
+                            ),
+                            (
+                                self.world.get_dist_bound_helper(agent_loc, _type)
+                                + self.world.get_direct_dist_between(
+                                    nearest_shared_space_loc, [so_1_loc]
+                                )
+                            ),
+                        )
+                elif belief_so_1 == 1 and len(so_2_locs) > 0:
+                    h = self.world.perimeter + 1
+                    for so_2_loc in so_2_locs:
+                        h = min(
+                            h,
+                            (
+                                self.world.get_direct_dist_between(
+                                    agent_loc, [so_2_loc]
+                                )
+                                + self.world.get_dist_bound_helper(so_2_loc, _type)
+                            ),
+                            (
+                                self.world.get_dist_bound_helper(agent_loc, _type)
+                                + self.world.get_direct_dist_between(
+                                    nearest_shared_space_loc, [so_2_loc]
+                                )
+                            ),
+                        )
+                else:
+                    h = self.world.perimeter + 1
+            elif isinstance(subtask, recipe.Deliver):
+                so_locs = self.world.get_all_non_delivered_object_locs(start_obj)
+                so_belief = belief[start_obj.full_name]
+
+                ao_locs = self.world.get_all_object_locs(action_obj)
+                ao_belief = belief[action_obj.name]
+                ao_not_belief = 1 - ao_belief
+
+                if len(so_locs):
+                    h = self.world.perimeter + 1
+                    for so_loc in so_locs:
+                        if len(ao_locs):
+                            for ao_loc in ao_locs:
+                                h = min(
+                                    h,
+                                    (
+                                        ao_belief
+                                        * (
+                                            self.world.get_direct_dist_between(
+                                                agent_loc, [so_loc]
+                                            )
+                                            + self.world.get_dist_bound_helper(
+                                                so_loc, _type
+                                            )
+                                        )
+                                    )
+                                    + (
+                                        ao_not_belief
+                                        * (
+                                            self.world.get_direct_dist_between(
+                                                agent_loc, [so_loc]
+                                            )
+                                            + self.world.get_direct_dist_between(
+                                                so_loc, [ao_loc]
+                                            )
+                                        )
+                                    ),
+                                )
+                        else:
+                            assert ao_belief == 1, "Invalid case!"
+                            h = min(
+                                h,
+                                (
+                                    ao_belief
+                                    * (
+                                        self.world.get_direct_dist_between(
+                                            agent_loc, [so_loc]
+                                        )
+                                        + self.world.get_dist_bound_helper(
+                                            so_loc, _type
+                                        )
+                                    )
+                                ),
+                            )
+                elif so_belief == 1:
+                    h = self.world.perimeter + 1
+                    if len(ao_locs):
+                        for ao_loc in ao_locs:
+                            h = min(
+                                h,
+                                (
+                                    ao_belief
+                                    * (
+                                        self.world.get_dist_bound_helper(
+                                            agent_loc, _type
+                                        )
+                                        + self.world.get_dist_bound_helper(
+                                            nearest_shared_space_loc, _type
+                                        )
                                     )
                                 )
+                                + (
+                                    ao_not_belief
+                                    * (
+                                        self.world.get_dist_bound_helper(
+                                            agent_loc, _type
+                                        )
+                                        + self.world.get_direct_dist_between(
+                                            nearest_shared_space_loc, [ao_loc]
+                                        )
+                                    )
+                                ),
                             )
-
-                            h_u[start_obj.full_name] = (
-                                start_obj_belief
-                                * self.world.get_dist_bound_between(
-                                    agent_locs, start_obj_locs, "upper"
-                                )
-                                + expected_failure
+                        else:
+                            assert ao_belief == 1, "Invalid case!"
+                            h = min(
+                                h,
+                                (
+                                    ao_belief
+                                    * (
+                                        self.world.get_dist_bound_helper(
+                                            agent_loc, _type
+                                        )
+                                        + self.world.get_dist_bound_helper(
+                                            nearest_shared_space_loc, _type
+                                        )
+                                    )
+                                ),
                             )
-
-                            h_l[start_obj.full_name] = (
-                                start_obj_belief
-                                * self.world.get_dist_bound_between(
-                                    agent_locs, start_obj_locs, "lower"
-                                )
-                                + expected_failure
-                            )
-
-                        if start_obj != goal_obj:
-                            # Calculates d_fail
-                            # Put a copy of start object into previous state
-                            start_obj_prev_state = copy.copy(start_obj)
-                            start_obj_prev_state.contents[0].state_index = (
-                                start_obj.contents[0].state_index - 1
-                            )
-                            start_obj_prev_state.contents[0].update_names()
-                            start_obj_prev_state.update_names()
-
-                            d_fail_u = h_l[start_obj_prev_state.full_name]
-                            if not isinstance(subtask, recipe.Get):
-                                # Furthest away after completing failure. Only applies to subtasks that are not get.
-                                d_fail_u += max_bound_loc
-
-                            d_fail_l = h_l[
-                                start_obj_prev_state.full_name
-                            ]  # Agent is holding it after completing failure
-
-                            if (
-                                subtask_action_obj is not None
-                            ):  # If subtask requires an action, we must move to that action object.
-                                d_fail_u += h_u[subtask_action_obj.name]
-                                d_fail_l += h_l[subtask_action_obj.name]
-
-                            h_u[goal_obj.full_name] = (
-                                goal_obj_belief
-                                * self.world.get_dist_bound_between(
-                                    agent_locs, goal_obj_locs, "upper"
-                                )
-                                + (1 - goal_obj_belief) * d_fail_u
-                            )
-
-                            h_l[goal_obj.full_name] = (
-                                goal_obj_belief
-                                * self.world.get_dist_bound_between(
-                                    agent_locs, goal_obj_locs, "lower"
-                                )
-                                + (1 - goal_obj_belief) * d_fail_l
-                            )
-                    else:
-                        raise Exception(
-                            f"Non-Merge or Delivered task has multiple contents {subtask} and {start_obj.full_name}"
-                        )
-                elif isinstance(subtask, recipe.Merge) or isinstance(
-                    subtask, recipe.Deliver
-                ):
-                    if isinstance(subtask, recipe.Merge):
-                        start_objs = start_obj
-                    else:
-                        start_objs = [start_obj]
-
-                    d_fail_l = 0
-                    d_fail_u = 0
-                    for start_obj in start_objs:
-                        """
-                        If the object doesn't exist then we get the heuristic for
-                        the object minus everyone of it's contents
-                        """
-                        start_obj_locs = self.world.get_all_object_locs(start_obj)
-                        start_obj_belief = beliefs[start_obj.full_name]
-
-                        min_d_l = float("inf")
-                        max_d_u = 0
-
-                        start_obj_copy = copy.copy(start_obj)
-                        for content in start_obj.contents:
-                            start_obj_copy.contents.remove(content)
-                            start_obj_copy.update_names()
-
-                            d_metric_l = 0
-                            d_metric_u = 0
-                            if start_obj_copy.full_name != "":
-                                if (
-                                    start_obj_copy.full_name not in h_l
-                                    or start_obj_copy.full_name not in h_u
-                                ):
-                                    start_obj_copy.contents.append(content)
-                                    continue
-
-                                d_metric_l += h_l[start_obj_copy.full_name]
-                                d_metric_u += h_u[start_obj_copy.full_name]
-
-                            content_obj = Object((-1, -1), content)
-
-                            d_metric_l += h_l[content_obj.full_name]
-                            d_metric_u += h_u[content_obj.full_name]
-
-                            min_d_l = min(d_metric_l, min_d_l)
-                            max_d_u = max(max_d_u, d_metric_u)
-                            start_obj_copy.contents.append(content)
-                            del content_obj
-                        d_fail_l += min_d_l
-                        d_fail_u += max_d_u
-                        d_fail_u += (
-                            max_bound_loc  # Furthest away after completing failure
-                        )
-
-                    h_u[goal_obj.full_name] = (
-                        goal_obj_belief
-                        * self.world.get_dist_bound_between(
-                            agent_locs, goal_obj_locs, "upper"
-                        )
-                        + (1 - goal_obj_belief) * d_fail_u
-                    )
-
-                    h_l[goal_obj.full_name] = (
-                        goal_obj_belief
-                        * self.world.get_dist_bound_between(
-                            agent_locs, goal_obj_locs, "lower"
-                        )
-                        + (1 - goal_obj_belief) * d_fail_l
-                    )
                 else:
-                    raise Exception(f"Did not capture subtask {subtask}.")
-        self.h_store[(self.get_repr(), beliefs.to_tuple())] = {"h_l": h_l, "h_u": h_u}
+                    h = self.world.perimeter + 1
+            elif isinstance(subtask, recipe.Get):
+                h = self.world.perimeter + 1
+            else:
+                raise Exception(f"Unaccounted for subtask: {subtask}")
+            return h + penalty
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
