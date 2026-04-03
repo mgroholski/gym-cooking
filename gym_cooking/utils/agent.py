@@ -46,7 +46,7 @@ class RealAgent:
         self.subtask_to_wrapper_dict = {}
         self.signal_reset_delegator = False
         self.is_subtask_complete = lambda w, b: False
-        self.beta_bd = arglist.beta_bd
+        self.beta = arglist.beta
         self.none_action_prob = 0.2
 
         self.world = copy.copy(obs.world)
@@ -284,7 +284,7 @@ class RealAgent:
                     obs_tm1=copy.copy(env.obs_tm1),
                     b_tm1=copy.copy(self.existence_beliefs_tm1),
                     a_tm1=a_tm1,
-                    beta=self.beta_bd,
+                    beta=self.beta,
                 )
         self.subtask_removed = False
 
@@ -482,7 +482,7 @@ class RealAgent:
         """
 
         self.existence_beliefs = ExistenceBeliefs(
-            obs, self.arglist.beta, self.subtasks_by_recipe, self.arglist.D
+            obs, self.beta, self.subtasks_by_recipe, self.arglist.D
         )
 
     def belief_update(self, obs):
