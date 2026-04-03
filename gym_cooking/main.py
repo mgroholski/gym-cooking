@@ -83,6 +83,12 @@ def parse_arguments():
         default=100,
         help="Max number of main loops in each run of BRTDP",
     )
+    parser.add_argument(
+        "--D",
+        type=float,
+        default=5,
+        help="The discrectization parameter for existence beliefs.",
+    )
 
     # Visualizations
     parser.add_argument(
