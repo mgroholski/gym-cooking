@@ -100,7 +100,7 @@ class OvercookedEnvironment(gym.Env):
             self.arglist.level,
             self.arglist.num_agents,
             self.arglist.seed,
-            self.arglist.order_queue_size,
+            self.arglist.queue_size,
         )
         model = ""
         if self.arglist.model1 is not None:
@@ -407,12 +407,12 @@ class OvercookedEnvironment(gym.Env):
             )
 
     def initialize_order_queue(self):
-        self.order_queue_size = int(getattr(self.arglist, "order_queue_size", 1))
-        if self.order_queue_size <= 0 or not self.recipes:
+        self.order_queue_size = int(getattr(self.arglist, "queue_size", 1))
+        if self.queue_size <= 0 or not self.recipes:
             self.hidden_order_queue = []
         else:
             recipe_indices = np.random.choice(
-                len(self.recipes), size=self.order_queue_size, replace=True
+                len(self.recipes), size=self.queue_size, replace=True
             )
             self.hidden_order_queue = [
                 Order(self.recipes[i], idx) for idx, i in enumerate(recipe_indices)
