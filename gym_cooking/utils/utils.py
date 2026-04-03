@@ -258,28 +258,38 @@ class ExistenceBeliefs:
 
         total_score = 0.0
         action_prob = {}
+        agent_name = obs_tm1.get_visible_agent().name
         for subtask_alloc, alloc_prob in subtask_alloc_dist.get_list():
             if alloc_prob <= 0.0:
                 continue
 
             log_weight_by_action = {}
 
-            for subtask, subtask_agents in subtask_alloc:
-                planner.set_settings(
-                    env=obs_tm1,
-                    beliefs=belief_tm1,
-                    subtask=subtask,
-                    subtask_agent_names=subtask_agents,
-                )
+            agent_subtask = [t for t, n in subtask_alloc if agent_name in n][0]
+            if agent_subtask is None:
+                continue
 
-                joint_actions = planner.get_actions(obs_tm1.get_repr())
-                for joint_action in joint_actions:
-                    q_val = float(
-                        planner.Q(obs_tm1, belief_tm1, joint_action, planner.v_l)
+            planner.set_settings(
+                env=obs_tm1,
+                beliefs=belief_tm1,
+                subtask_alloc=subtask_alloc,
+                task_alloc_probs=subtask_alloc_dist,
+            )
+
+            joint_actions = planner.get_actions(obs_tm1.get_repr())
+            for joint_action in joint_actions:
+                q_val = float(
+                    planner.Q(
+                        obs_tm1,
+                        belief_tm1,
+                        subtask_alloc_dist,
+                        joint_action,
+                        planner.v_l,
                     )
-                    log_weight_by_action[joint_action] = (
-                        log_weight_by_action.get(joint_action, 0.0) + self.beta * q_val
-                    )
+                )
+                log_weight_by_action[joint_action] = (
+                    log_weight_by_action.get(joint_action, 0.0) + self.beta * q_val
+                )
 
             for joint_action, log_weight in log_weight_by_action.items():
                 score = float(alloc_prob) * math.exp(log_weight)

@@ -9,7 +9,7 @@ import numpy as np
 import recipe_planner.utils as recipe_utils
 
 # Delegation planning
-from delegation_planner.bayesian_delegator import BayesianDelegator
+from delegation_planner.bayesian_delegator import BayesianDelegator, SubtaskAllocation
 
 # Navigation planner
 from recipe_planner.stripsworld import STRIPSWorld
@@ -47,7 +47,7 @@ class RealAgent:
         self.signal_reset_delegator = False
         self.is_subtask_complete = lambda w, b: False
         self.beta_bd = arglist.beta_bd
-        self.none_action_prob = 1.0
+        self.none_action_prob = 0.2
 
         self.world = copy.copy(obs.world)
 
@@ -115,9 +115,16 @@ class RealAgent:
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
-        self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
+        self.new_subtask_alloc = self.delegator.select_subtask(
             agent_name=self.name,
         )
+
+        for subtask, subtask_agents in self.new_subtask_alloc:
+            if self.name in subtask_agents:
+                self.new_subtask = subtask
+                self.new_subtask_agent_names = subtask_agents
+                break
+
         self.plan(copy.copy(obs))
         return self.action
 
@@ -169,6 +176,7 @@ class RealAgent:
     def reset_subtasks(self):
         """Reset subtasks---relevant for Bayesian Delegation."""
         self.subtask = None
+        self.subtask_alloc = None
         self.subtask_agent_names = []
         self.subtask_complete = False
 
@@ -305,7 +313,10 @@ class RealAgent:
         print("===============================")
         print(
             "right before planning, {} had old subtask {}, new subtask {}, subtask complete {}".format(
-                self.name, self.subtask, self.new_subtask, self.subtask_complete
+                self.name,
+                self.subtask,
+                self.new_subtask,
+                self.subtask_complete,
             )
         )
 
@@ -325,27 +336,27 @@ class RealAgent:
             self.action = actions[np.random.choice(len(actions), p=probs)]
         # Otherwise, plan accordingly.
         else:
-            if self.model_type == "greedy" or initializing_priors:
-                other_agent_planners = {}
-            else:
-                backup_subtask = (
-                    self.new_subtask if self.new_subtask is not None else self.subtask
-                )
-
             print(
                 "[ {} Planning ] Task: {}, Task Agents: {}".format(
                     self.name, self.new_subtask, self.new_subtask_agent_names
                 )
             )
 
+            subtask_alloc = [
+                SubtaskAllocation(
+                    subtask=self.new_subtask,
+                    subtask_agent_names=self.new_subtask_agent_names,
+                )
+            ]
             self.action = self.planner.get_next_action(
                 env=env,
                 belief=self.existence_beliefs,
-                subtask=self.new_subtask,
-                subtask_agent_names=self.new_subtask_agent_names,
+                subtask_alloc=subtask_alloc,
+                task_alloc_probs=self.delegator.probs,
             )
 
         # Update subtask.
+        self.subtask_alloc = self.new_subtask_alloc
         self.subtask = self.new_subtask
         self.subtask_agent_names = self.new_subtask_agent_names
         self.new_subtask = None
@@ -366,7 +377,7 @@ class RealAgent:
         if len(self.new_subtask_agent_names) == 2:  # joint subtask
             self.is_subtask_complete = None
             start_obj = self.start_obj
-            agent = [a for a in env.sim_agents if a.location is not None][0]
+            agent = env.get_visible_agent()
             if (
                 isinstance(self.new_subtask, Chop)
                 or isinstance(self.new_subtask, Cook)

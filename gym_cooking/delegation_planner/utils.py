@@ -1,3 +1,4 @@
+import copy
 import random
 from collections import namedtuple
 
@@ -13,10 +14,10 @@ class SubtaskAllocDistribution:
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
 
         self.probs = {}
-        self.keys = list(subtask_allocs.keys())
-
         if len(subtask_allocs) == 0:
             return
+
+        self.keys = subtask_allocs
         prior = 1.0 / (len(subtask_allocs))
         print("set prior", prior)
 
@@ -29,8 +30,14 @@ class SubtaskAllocDistribution:
             s += str(subtask_alloc) + ": " + str(p) + "\n"
         return s
 
+    def __copy__(self):
+        new = self.__class__.__new__(self.__class__)
+        new.keys = copy.copy(self.keys) if hasattr(self, "keys") else []
+        new.probs = copy.deepcopy(self.probs)
+        return new
+
     def to_tuple(self):
-        return tuple([self.probs[k] for k in self.keys])
+        return tuple([self.probs[tuple(k)] for k in self.keys])
 
     def enumerate_subtask_allocs(self):
         return list([k for k in self.probs.keys() if self.probs[k] != 0])

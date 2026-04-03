@@ -447,7 +447,6 @@ class OvercookedEnvironment(gym.Env):
     def get_bound_for_subtask_given_objs(
         self,
         belief,
-        task_alloc_probs
         subtask,
         subtask_agent_names,
         start_obj,
@@ -481,6 +480,9 @@ class OvercookedEnvironment(gym.Env):
 
         holding_penalty = min(holding_penalty, HOLDING_PENALTY)
         penalty = holding_penalty
+
+        if subtask is None:
+            return self.world.perimeter + 1 + penalty
 
         A_locs, B_locs = self.get_AB_locs_given_objs(
             subtask, subtask_agent_names, start_obj, goal_obj, action_obj
@@ -772,22 +774,20 @@ class OvercookedEnvironment(gym.Env):
                                     )
                                 ),
                             )
-                        else:
-                            assert ao_belief == 1, "Invalid case!"
-                            h = min(
-                                h,
-                                (
-                                    ao_belief
-                                    * (
-                                        self.world.get_dist_bound_helper(
-                                            agent_loc, _type
-                                        )
-                                        + self.world.get_dist_bound_helper(
-                                            nearest_shared_space_loc, _type
-                                        )
+                    else:
+                        assert ao_belief == 1, "Invalid case!"
+                        h = min(
+                            h,
+                            (
+                                ao_belief
+                                * (
+                                    self.world.get_dist_bound_helper(agent_loc, _type)
+                                    + self.world.get_dist_bound_helper(
+                                        nearest_shared_space_loc, _type
                                     )
-                                ),
-                            )
+                                )
+                            ),
+                        )
                 else:
                     h = self.world.perimeter + 1
             elif isinstance(subtask, recipe.Get):
@@ -795,6 +795,65 @@ class OvercookedEnvironment(gym.Env):
             else:
                 raise Exception(f"Unaccounted for subtask: {subtask}")
             return h + penalty
+
+    def get_visible_agent(self):
+        return [a for a in self.sim_agents if a.location is not None][0]
+
+    def get_bound_for_subtask_alloc(
+        self,
+        belief,
+        subtask_alloc,
+        task_alloc_probs,
+        _type,
+    ):
+        if not (
+            hasattr(self, "heuristic_store")
+            and (
+                self.get_repr(),
+                belief.to_tuple(),
+            )
+            in self.heuristic_store
+        ):
+            if not hasattr(self, "heuristic_store"):
+                self.heuristic_store = {}
+
+            h = {}
+
+            agent_name = self.get_visible_agent().name
+            for subtask_alloc in task_alloc_probs.keys:
+                if task_alloc_probs.get(subtask_alloc) == 0:
+                    h[tuple(subtask_alloc)] = 0
+
+                subtask_alloc_tuple = tuple(subtask_alloc)
+                h[subtask_alloc_tuple] = 0
+                for (
+                    subtask,
+                    subtask_agent_names,
+                ) in subtask_alloc:
+                    # We only care if the visible agent is within the task
+                    if agent_name not in subtask_agent_names:
+                        continue
+
+                    start_obj, goal_obj = nav_utils.get_subtask_obj(subtask)
+                    action_obj = nav_utils.get_subtask_action_obj(subtask)
+                    h[subtask_alloc_tuple] += self.get_bound_for_subtask_given_objs(
+                        belief,
+                        subtask,
+                        subtask_agent_names,
+                        start_obj,
+                        goal_obj,
+                        action_obj,
+                        _type,
+                    )
+
+            self.heuristic_store[(self.get_repr(), belief.to_tuple())] = h
+
+        heur = self.heuristic_store[(self.get_repr(), belief.to_tuple())]
+        expected_heur = 0
+        for task_alloc, p in task_alloc_probs.probs.items():
+            expected_heur += p * heur[tuple(task_alloc)]
+
+        return expected_heur
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
