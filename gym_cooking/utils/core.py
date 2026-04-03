@@ -38,6 +38,7 @@ class GridSquare:
         self.collidable = True  # cannot go through
         self.dynamic = False  # cannot move around
         self.is_dispenser = False
+        self.is_shared = False
 
     def __str__(self):
         return color(self.rep, self.color)
@@ -196,6 +197,7 @@ class Object:
         new = Object(self.location, self.contents[0])
         new.__dict__ = self.__dict__.copy()
         new.contents = [copy.copy(c) for c in self.contents]
+        new.is_delivered = self.is_delivered
         return new
 
     def get_repr(self):

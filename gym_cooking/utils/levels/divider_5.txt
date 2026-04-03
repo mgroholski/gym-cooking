@@ -1,0 +1,19 @@
+--||---//--
+-    -    |
+-    *    O
+l    -    -
+t    -    P
+p    -    -
+------M----
+
+Salad
+Burger
+SimpleLettuce
+SimpleTomato
+OnionSalad
+
+2 1
+7 1
+
+0 5
+5 10
