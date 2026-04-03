@@ -407,7 +407,7 @@ class OvercookedEnvironment(gym.Env):
             )
 
     def initialize_order_queue(self):
-        self.order_queue_size = int(getattr(self.arglist, "queue_size", 1))
+        self.queue_size = int(getattr(self.arglist, "queue_size", 1))
         if self.queue_size <= 0 or not self.recipes:
             self.hidden_order_queue = []
         else:
