@@ -1,6 +1,7 @@
 output/
 pickles/*
 .zed
+.llm-env
 
 # Files
 *.zip
