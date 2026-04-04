@@ -49,7 +49,7 @@ class RealAgent:
         self.signal_reset_delegator = False
         self.is_subtask_complete = lambda w, b: False
         self.beta = arglist.beta
-        self.none_action_prob = 0.7
+        self.none_action_prob = 1.0
 
         self.world = copy.copy(obs.world)
 
