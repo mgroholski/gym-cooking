@@ -20,7 +20,13 @@ SubtaskAllocation = namedtuple("SubtaskAllocation", "subtask subtask_agent_names
 
 class BayesianDelegator(Delegator):
     def __init__(
-        self, agent_name, all_agent_names, model_type, planner, none_action_prob
+        self,
+        agent_name,
+        all_agent_names,
+        model_type,
+        planner,
+        none_action_prob,
+        can_communiate,
     ):
         """Initializing Bayesian Delegator for agent_name.
 
@@ -41,6 +47,7 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
+        self.can_communicate = can_communiate
 
     def should_reset_priors(self, obs, belief, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -127,7 +134,6 @@ class BayesianDelegator(Delegator):
         existence_beliefs_tuple = existence_beliefs.to_tuple()
         task_alloc_probs_tuple = task_alloc_probs.to_tuple()
 
-        # breakpoint()
         _ = self.planner.get_next_action(
             env=obs,
             belief=existence_beliefs,
@@ -314,7 +320,16 @@ class BayesianDelegator(Delegator):
                 filter(lambda a: a.name == self.agent_name, obs_tm1.sim_agents)
             )[0]
             # Get the number of possible actions at obs_tm1 available to agent.
-            num_actions = len(get_single_actions(env=obs_tm1, agent=sim_agent)) - 1
+            num_actions = (
+                len(
+                    get_single_actions(
+                        env=obs_tm1,
+                        agent=sim_agent,
+                        can_communicate=self.can_communicate,
+                    )
+                )
+                - 1
+            )
             action_prob = (1.0 - self.none_action_prob) / (
                 num_actions
             )  # exclude (0, 0)

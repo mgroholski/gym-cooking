@@ -50,6 +50,8 @@ class OvercookedEnvironment(gym.Env):
 
         self.known_agents_names = []
 
+        self.comms = {}
+
         # Heuristic
         self.h_store = {}
 
@@ -115,6 +117,10 @@ class OvercookedEnvironment(gym.Env):
             model += "_partially-observable"
         else:
             model += "_fully-observable"
+
+        if self.arglist.comm:
+            model += "_comm"
+
         self.filename += model
 
     def get_agent_obs(self, agent_idx):
@@ -268,12 +274,14 @@ class OvercookedEnvironment(gym.Env):
     def close(self):
         return
 
-    def step(self, action_dict):
+    def step(self, action_dict, comm_dict):
         # Track internal environment info.
         self.t += 1
         print("===============================")
         print("[environment.step] @ TIMESTEP {}".format(self.t))
         print("===============================")
+
+        self.comms = comm_dict
 
         # Get actions.
         for sim_agent in self.sim_agents:
@@ -288,7 +296,9 @@ class OvercookedEnvironment(gym.Env):
         # Visualize.
         self.display()
         self.print_agents()
-        print("Environment Repr: \n", self.get_repr())
+        if self.arglist.comm:
+            self.print_communication()
+
         if self.arglist.record:
             self.game.save_image_obs(self.t)
 
@@ -335,6 +345,10 @@ class OvercookedEnvironment(gym.Env):
     def print_agents(self):
         for sim_agent in self.sim_agents:
             sim_agent.print_status()
+
+    def print_communication(self):
+        for k, v in self.comms.items():
+            print(f'{k}: "{v}v"\n')
 
     def display(self):
         self.update_display()
@@ -808,11 +822,7 @@ class OvercookedEnvironment(gym.Env):
     ):
         if not (
             hasattr(self, "heuristic_store")
-            and (
-                self.get_repr(),
-                belief.to_tuple(),
-            )
-            in self.heuristic_store
+            and (self.get_repr(), belief.to_tuple(), _type) in self.heuristic_store
         ):
             if not hasattr(self, "heuristic_store"):
                 self.heuristic_store = {}
@@ -846,9 +856,9 @@ class OvercookedEnvironment(gym.Env):
                         _type,
                     )
 
-            self.heuristic_store[(self.get_repr(), belief.to_tuple())] = h
+            self.heuristic_store[(self.get_repr(), belief.to_tuple(), _type)] = h
 
-        heur = self.heuristic_store[(self.get_repr(), belief.to_tuple())]
+        heur = self.heuristic_store[(self.get_repr(), belief.to_tuple(), _type)]
         expected_heur = 0
         for task_alloc, p in task_alloc_probs.probs.items():
             expected_heur += p * heur[tuple(task_alloc)]

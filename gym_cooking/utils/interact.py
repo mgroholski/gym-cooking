@@ -1,6 +1,8 @@
 import numpy as np
 from utils.core import *
 
+from gym_cooking.navigation_planner.utils import COMM_ACTION
+
 
 def interact(agent, world):
     """Carries out interaction for this agent taking this action in this world.
@@ -9,7 +11,7 @@ def interact(agent, world):
     """
 
     # agent does nothing (i.e. no arrow key) or communicates
-    if agent.action == (0, 0) or agent.action == (-1, -1):
+    if agent.action == (0, 0) or agent.action == COMM_ACTION:
         return
 
     action_x, action_y = world.inbounds(

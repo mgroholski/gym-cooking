@@ -10,6 +10,7 @@ from itertools import product
 import navigation_planner.utils as nav_utils
 import numpy as np
 import scipy as sp
+from navigation_planner.utils import COMM_ACTION
 from navigation_planner.utils import MinPriorityQueue as mpq
 from recipe_planner.utils import *
 from utils.core import *
@@ -36,7 +37,7 @@ class E2E_BRTDP:
     paper: http://www.cs.cmu.edu/~ggordon/mcmahan-likhachev-gordon.brtdp.pdf
     """
 
-    def __init__(self, alpha, tau, cap, main_cap):
+    def __init__(self, alpha, tau, cap, main_cap, can_communicate):
         """
         Initializes BRTDP algorithm with its hyper-parameters.
         Rf. BRTDP paper for how these hyper-parameters are used in their
@@ -54,6 +55,7 @@ class E2E_BRTDP:
         self.tau = tau
         self.cap = cap
         self.main_cap = main_cap
+        self.can_communicate = can_communicate
 
         print("Planner Settings:")
         print(f"\t Main Cap: {self.main_cap}")
@@ -76,10 +78,15 @@ class E2E_BRTDP:
         # Setting up costs for value function.
         self.time_cost = 1.0
         self.action_cost = 0.1
+        self.comm_cost = 0.3
 
     def __copy__(self):
         copy_ = E2E_BRTDP(
-            alpha=self.alpha, tau=self.tau, cap=self.cap, main_cap=self.main_cap
+            alpha=self.alpha,
+            tau=self.tau,
+            cap=self.cap,
+            main_cap=self.main_cap,
+            can_communicate=self.can_communicate,
         )
         copy_.__dict__ = self.__dict__.copy()
         return copy_
@@ -89,6 +96,9 @@ class E2E_BRTDP:
 
         sim_state = copy.copy(state)
         if len(subtask_agents) > 1:
+            if COMM_ACTION in action:
+                task_alloc_probs = task_alloc_probs.get_comm_dist()
+
             agent_1, agent_2 = subtask_agents
             sim_agent_1 = sim_agent = list(
                 filter(lambda a: a.name == agent_1.name, sim_state.sim_agents)
@@ -106,6 +116,9 @@ class E2E_BRTDP:
                 interact(agent=sim_agent_2, world=sim_state.world)
 
         else:
+            if action == COMM_ACTION:
+                task_alloc_probs = task_alloc_probs.get_comm_dist()
+
             agent = subtask_agents[0]
             sim_agent = list(
                 filter(lambda a: a.name == agent.name, sim_state.sim_agents)
@@ -139,7 +152,9 @@ class E2E_BRTDP:
             agent = subtask_agents[0]
 
             if agent.location is not None:
-                output_actions = nav_utils.get_single_actions(env=state, agent=agent)
+                output_actions = nav_utils.get_single_actions(
+                    env=state, agent=agent, can_communicate=self.can_communicate
+                )
             else:
                 output_actions = [None]
         # Return joint-agent actions.
@@ -152,13 +167,21 @@ class E2E_BRTDP:
                 output_actions = list(
                     product(
                         null_actions,
-                        nav_utils.get_single_actions(env=state, agent=agent_2),
+                        nav_utils.get_single_actions(
+                            env=state,
+                            agent=agent_2,
+                            can_communicate=self.can_communicate,
+                        ),
                     )
                 )
             else:
                 output_actions = list(
                     product(
-                        nav_utils.get_single_actions(env=state, agent=agent_1),
+                        nav_utils.get_single_actions(
+                            env=state,
+                            agent=agent_1,
+                            can_communicate=self.can_communicate,
+                        ),
                         null_actions,
                     )
                 )
@@ -689,8 +712,10 @@ class E2E_BRTDP:
         if isinstance(action[0], int):
             action = tuple([action])
         for a in action:
-            if a != (0, 0):
+            if a != (0, 0) and a != COMM_ACTION:
                 cost += self.action_cost
+            if a == COMM_ACTION:
+                cost += self.comm_cost
         return cost
 
     def get_expected_diff(self, start_state, belief, task_alloc_probs, action):

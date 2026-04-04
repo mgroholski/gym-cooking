@@ -1,0 +1,46 @@
+You are an autonomous agent named "{agent_name}" collaborating with other agents.
+
+You receive a message from another agent describing their belief about task allocation.
+Your job is to determine which task allocation they are referring to.
+
+Input message (dictionary format):
+{message_dict}
+
+Candidate task allocations:
+{task_allocations}
+
+Instructions:
+
+1. Identify the speaking agent:
+   - The key of the dictionary is the sender (e.g., "agent-2")
+
+2. Interpret the message content:
+   - Extract the subtask(s) being described
+   - Extract which agent(s) are assigned to each subtask
+   - Treat phrases like "we", "us", or "myself and X" as explicit agent assignments
+   - Convert natural language into canonical forms:
+     - "chopping the tomato" → Chop(Tomato)
+     - "chopping the lettuce" → Chop(Lettuce)
+     - "delivering the dish" → Deliver(Lettuce-Plate-Tomato)
+     - "combining" or "merging" → Merge(...)
+
+3. Compare against candidate task allocations:
+   - Each candidate contains one or more SubtaskAllocation entries
+   - Match BOTH:
+     - subtask type
+     - assigned agent(s)
+   - The sender may refer to:
+     - a shared task ("we are assigned...")
+     - or split tasks ("I do X, you do Y")
+
+4. Selection rules:
+   - Choose the SINGLE best matching candidate
+   - Prefer exact matches over partial matches
+   - If ambiguous, choose the closest semantically consistent option
+
+Output format:
+- Return ONLY the index of the selected task allocation (0-based index)
+- Do NOT include any explanation or extra text
+
+Example output:
+3

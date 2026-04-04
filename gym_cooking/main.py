@@ -52,6 +52,12 @@ def parse_arguments():
         default=1,
         help="Number of tasks to place in the queue at reset.",
     )
+    parser.add_argument(
+        "--comm",
+        action="store_true",
+        default=False,
+        help="Toggles the agents ability to communicate.",
+    )
 
     parser.add_argument(
         "-r",
@@ -191,12 +197,17 @@ def main_loop(arglist):
 
     while not env.done():
         action_dict = {}
+        communication_dict = {}
 
         for idx, agent in enumerate(real_agents):
-            action = agent.select_action(obs=obs.get_agent_obs(idx))
+            action, comm = agent.select_action(obs=obs.get_agent_obs(idx))
             action_dict[agent.name] = action
+            if comm is not None:
+                communication_dict[agent.name] = comm
 
-        obs, _, _, info = env.step(action_dict=action_dict)
+        obs, _, _, info = env.step(
+            action_dict=action_dict, comm_dict=communication_dict
+        )
 
         # Agents
         for idx, agent in enumerate(real_agents):

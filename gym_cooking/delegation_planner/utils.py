@@ -6,6 +6,8 @@ import numpy as np
 import scipy as sp
 from utils.utils import agent_settings
 
+GAMMA = 3
+
 
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
@@ -27,7 +29,11 @@ class SubtaskAllocDistribution:
     def __str__(self):
         s = ""
         for subtask_alloc, p in self.probs.items():
-            s += str(subtask_alloc) + ": " + str(p) + "\n"
+            s + "{"
+            for subtask, subtask_agent_names in subtask_alloc:
+                s += f"({subtask}, {subtask_agent_names}),"
+
+            s += "}: " + str(p) + "\n"
         return s
 
     def __copy__(self):
@@ -47,6 +53,14 @@ class SubtaskAllocDistribution:
 
     def get(self, subtask_alloc):
         return self.probs[tuple(subtask_alloc)]
+
+    def get_comm_dist(self):
+        cur_task_alloc = self.get_max()
+        altered_dist = copy.copy(self)
+        altered_dist.probs[tuple(cur_task_alloc)] *= GAMMA
+        altered_dist.normalize()
+
+        return altered_dist
 
     def get_max(self):
         if len(self.probs) > 0:
