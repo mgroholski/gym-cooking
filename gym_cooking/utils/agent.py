@@ -537,6 +537,7 @@ class SimAgent:
         self.action = (0, 0)
         self.observable_cols = observable_cols
         self.objs_shared_cnt = {}
+        self.comm = None
 
     def __str__(self):
         return color(self.name[-1], self.color)

@@ -31,7 +31,9 @@ class Game:
         self.scale = 80  # num pixels per tile
         self.holding_scale = 0.5
         self.container_scale = 0.7
-        self.width = self.scale * self.world.width
+        self.world_width = self.scale * self.world.width
+        self.sidebar_width = self.scale * 3
+        self.width = self.world_width + self.sidebar_width
         self.height = self.scale * self.world.height + self.scale
         self.tile_size = (self.scale, self.scale)
         self.holding_size = tuple(
@@ -43,10 +45,12 @@ class Game:
         self.holding_container_size = tuple(
             (self.container_scale * np.asarray(self.holding_size)).astype(int)
         )
+        self.comm_font = None
         # self.font = pygame.font.SysFont('arialttf', 10)
 
     def on_init(self):
         pygame.init()
+        self.comm_font = pygame.font.SysFont("arial", 14, bold=True)
         if self.play:
             self.screen = pygame.display.set_mode((self.width, self.height))
         else:
@@ -79,6 +83,7 @@ class Game:
             self.draw_agent(agent)
 
         self.draw_order_queue(self.scale * self.world.height, 0)
+        self.draw_comms_sidebar()
 
         if self.play:
             pygame.display.flip()
@@ -148,6 +153,86 @@ class Game:
             self.scaled_location(agent.location),
         )
         self.draw_agent_object(agent.holding)
+
+    def draw_comms_sidebar(self):
+        if self.comm_font is None:
+            return
+
+        sidebar_x = self.world_width
+        sidebar_rect = pygame.Rect(sidebar_x, 0, self.sidebar_width, self.height)
+        pygame.draw.rect(self.screen, (230, 230, 230), sidebar_rect)
+        pygame.draw.line(
+            self.screen,
+            (0, 0, 0),
+            (sidebar_x, 0),
+            (sidebar_x, self.height),
+            1,
+        )
+
+        outer_padding = 6
+        inner_padding = 4
+        y = outer_padding
+        max_text_width = max(
+            1, self.sidebar_width - outer_padding * 2 - inner_padding * 2
+        )
+
+        for agent in self.sim_agents:
+            if agent.comm is None:
+                continue
+
+            label = "{}: {}".format(agent.name, agent.comm)
+
+            words = label.split(" ")
+            lines = []
+            line = ""
+            for word in words:
+                test_line = word if not line else line + " " + word
+                if self.comm_font.size(test_line)[0] <= max_text_width:
+                    line = test_line
+                else:
+                    if line:
+                        lines.append(line)
+                        line = ""
+                    if self.comm_font.size(word)[0] <= max_text_width:
+                        line = word
+                    else:
+                        chunk = ""
+                        for ch in word:
+                            test_chunk = chunk + ch
+                            if self.comm_font.size(test_chunk)[0] <= max_text_width:
+                                chunk = test_chunk
+                            else:
+                                if chunk:
+                                    lines.append(chunk)
+                                chunk = ch
+                        line = chunk
+            if line:
+                lines.append(line)
+
+            line_height = self.comm_font.get_linesize()
+            text_h = len(lines) * line_height + inner_padding * 2
+            if y + text_h > self.height - outer_padding:
+                break
+
+            bg_rect = pygame.Rect(
+                sidebar_x + outer_padding,
+                y,
+                self.sidebar_width - outer_padding * 2,
+                text_h,
+            )
+            pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
+
+            for idx, l in enumerate(lines):
+                text_surface = self.comm_font.render(l, True, (255, 255, 255))
+                self.screen.blit(
+                    text_surface,
+                    (
+                        sidebar_x + outer_padding + inner_padding,
+                        y + inner_padding + idx * line_height,
+                    ),
+                )
+
+            y += text_h + outer_padding
 
     def draw_agent_object(self, obj):
         # Holding shows up in bottom right corner.

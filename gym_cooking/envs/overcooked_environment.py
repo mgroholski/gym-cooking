@@ -282,10 +282,12 @@ class OvercookedEnvironment(gym.Env):
         print("===============================")
 
         self.comms = comm_dict
-
         # Get actions.
         for sim_agent in self.sim_agents:
             sim_agent.action = action_dict[sim_agent.name]
+            sim_agent.comm = (
+                comm_dict[sim_agent.name] if sim_agent.name in comm_dict else None
+            )
 
         self.obs_tm1 = copy.copy(self)
 
