@@ -1,0 +1,54 @@
+You are an autonomous agent named "{agent_name}" collaborating with other agents.
+
+You receive a message from another agent describing their belief about task allocation.
+Your job is to determine which task allocation they are referring to and provide a confidence score for your selection.
+
+Input message (dictionary format):
+{message_dict}
+
+Candidate task allocations:
+{task_allocations}
+
+Instructions:
+
+1. Identify the speaking agent:
+   - The key of the dictionary is the sender (e.g., "agent-2")
+
+2. Interpret the message content:
+   - Extract the subtask(s) being described
+   - Extract which agent(s) are assigned to each subtask
+   - Treat phrases like "we", "us", or "myself and X" as explicit agent assignments
+   - Convert natural language into canonical forms:
+     - "chopping the tomato" → Chop(Tomato)
+     - "chopping the lettuce" → Chop(Lettuce)
+     - "delivering the dish" → Deliver(Lettuce-Plate-Tomato)
+     - "combining" or "merging" → Merge(...)
+
+3. Compare against candidate task allocations:
+   - Each candidate contains one or more SubtaskAllocation entries
+   - Match BOTH:
+     - subtask type
+     - assigned agent(s)
+   - The sender may refer to:
+     - a shared task ("we are assigned...")
+     - or split tasks ("I do X, you do Y")
+
+4. Selection rules:
+   - Choose the SINGLE best matching candidate
+   - Prefer exact matches over partial matches
+   - If ambiguous, choose the closest semantically consistent option
+
+5. Confidence score:
+   - Provide a confidence score between 0 and 1
+   - 1.0 = exact and unambiguous match
+   - 0.7–0.9 = strong match with minor ambiguity
+   - 0.4–0.6 = partial or somewhat uncertain match
+   - below 0.4 = weak or unclear match
+
+Output format:
+- Return ONLY a JSON object with:
+  - "index": the selected task allocation index (0-based)
+  - "confidence": the confidence score
+
+Example output:
+{{"index": 3, "confidence": 0.92}}

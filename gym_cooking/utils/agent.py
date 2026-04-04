@@ -17,9 +17,9 @@ from recipe_planner.utils import *
 from termcolor import colored as color
 
 # Other core modules
-from utils.core import CookingPan, Counter, Cutboard
 from utils.utils import ExistenceBeliefs, agent_settings
 
+from gym_cooking.communication.comm_functions import CommunicationFunctions
 from gym_cooking.navigation_planner.planners.e2e_brtdp import E2E_BRTDP
 from gym_cooking.utils.interact import interact
 
@@ -38,6 +38,8 @@ class RealAgent:
         self.color = id_color
         self.recipes = recipes
 
+        self.can_communicate = self.arglist.comm
+
         # Bayesian Delegation.
         self.reset_subtasks()
         self.new_subtask = None
@@ -47,7 +49,7 @@ class RealAgent:
         self.signal_reset_delegator = False
         self.is_subtask_complete = lambda w, b: False
         self.beta = arglist.beta
-        self.none_action_prob = 0.2
+        self.none_action_prob = 0.7
 
         self.world = copy.copy(obs.world)
 
@@ -66,7 +68,11 @@ class RealAgent:
             tau=arglist.tau,
             cap=arglist.cap,
             main_cap=arglist.main_cap,
+            can_communicate=self.can_communicate,
         )
+
+        # Communication Function
+        self.comm_func = CommunicationFunctions(self.arglist)
 
     def __str__(self):
         return color(self.name[-1], self.color)
@@ -88,6 +94,11 @@ class RealAgent:
             a.holding = copy.copy(self.holding)
         return a
 
+    def generate_communication(self, obs):
+        return self.comm_func.speak(
+            self.name, obs, self.existence_beliefs, self.delegator.probs
+        )
+
     def get_holding(self):
         if self.holding is None:
             return "None"
@@ -99,12 +110,12 @@ class RealAgent:
         self.location = sim_agent.location
         self.holding = sim_agent.holding
         self.action = sim_agent.action
-
         if obs.t == 0:
             self.setup_subtasks(env=obs)
             self.init_beliefs(obs)
 
         obs.ordered_subtasks_by_recipe = self.sw.ordered_subtasks_by_recipe
+
         if obs.t != 0:
             self.belief_update(obs=obs)
 
@@ -126,7 +137,12 @@ class RealAgent:
                 break
 
         self.plan(copy.copy(obs))
-        return self.action
+
+        comm = None
+        if self.action == nav_utils.COMM_ACTION:
+            comm = self.generate_communication(obs)
+
+        return self.action, comm
 
     def get_subtasks(self, recipes, world) -> Dict:
         """Return different subtask permutations for active orders."""
@@ -171,6 +187,9 @@ class RealAgent:
             model_type=self.model_type,
             planner=self.planner,
             none_action_prob=self.none_action_prob,
+            can_communiate=self.can_communicate,
+            lambda_factor=self.arglist.lambda_v,
+            gamma=self.arglist.gamma,
         )
 
     def reset_subtasks(self):
@@ -254,6 +273,7 @@ class RealAgent:
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
+
         if (self.subtask_removed) or (
             self.delegator.should_reset_priors(
                 obs=copy.copy(env),
@@ -280,10 +300,17 @@ class RealAgent:
                 a_tm1 = {a.name: None for a in env.sim_agents}
                 a_tm1[self.name] = self.action
 
+                comm_info = None
+                if len(env.comms):
+                    comm_info = self.comm_func.listen(
+                        self.name, env, self.existence_beliefs, self.delegator.probs
+                    )
+
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
                     b_tm1=copy.copy(self.existence_beliefs_tm1),
                     a_tm1=a_tm1,
+                    comm_info=comm_info,
                     beta=self.beta,
                 )
         self.subtask_removed = False
@@ -326,7 +353,9 @@ class RealAgent:
 
         # If subtask is None, then do nothing.
         if (self.new_subtask is None) or (not self.new_subtask_agent_names):
-            actions = nav_utils.get_single_actions(env=env, agent=self)
+            actions = nav_utils.get_single_actions(
+                env=env, agent=self, can_communicate=self.can_communicate
+            )
             probs = []
             for a in actions:
                 if a == (0, 0):

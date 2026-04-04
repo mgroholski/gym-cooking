@@ -10,8 +10,10 @@ from utils.utils import agent_settings
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
 
-    def __init__(self, subtask_allocs):
+    def __init__(self, subtask_allocs, gamma):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
+
+        self.gamma = gamma
 
         self.probs = {}
         if len(subtask_allocs) == 0:
@@ -27,13 +29,18 @@ class SubtaskAllocDistribution:
     def __str__(self):
         s = ""
         for subtask_alloc, p in self.probs.items():
-            s += str(subtask_alloc) + ": " + str(p) + "\n"
+            s + "{"
+            for subtask, subtask_agent_names in subtask_alloc:
+                s += f"({subtask}, {subtask_agent_names}),"
+
+            s += "}: " + str(p) + "\n"
         return s
 
     def __copy__(self):
         new = self.__class__.__new__(self.__class__)
         new.keys = copy.copy(self.keys) if hasattr(self, "keys") else []
         new.probs = copy.deepcopy(self.probs)
+        new.gamma = self.gamma
         return new
 
     def to_tuple(self):
@@ -47,6 +54,14 @@ class SubtaskAllocDistribution:
 
     def get(self, subtask_alloc):
         return self.probs[tuple(subtask_alloc)]
+
+    def get_comm_dist(self):
+        cur_task_alloc = self.get_max()
+        altered_dist = copy.copy(self)
+        altered_dist.probs[tuple(cur_task_alloc)] *= self.gamma
+        altered_dist.normalize()
+
+        return altered_dist
 
     def get_max(self):
         if len(self.probs) > 0:

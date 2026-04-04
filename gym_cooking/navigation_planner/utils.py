@@ -27,6 +27,8 @@ StringToObject = {
     "Potato": Potato,
 }
 
+COMM_ACTION = (-1, -1)
+
 
 class MinPriorityQueue(PriorityQueue):
     """Used for min priority queue in BRTDP algorithm."""
@@ -68,7 +70,7 @@ def is_smaller(p_, p):
         return p_ < p
 
 
-def get_single_actions(env, agent):
+def get_single_actions(env, agent, can_communicate):
     actions = []
 
     agent_locs = [a.location for a in env.sim_agents if a.location is not None]
@@ -103,6 +105,9 @@ def get_single_actions(env, agent):
                 actions.append(t)
     # doing nothing is always possible
     actions.append((0, 0))
+
+    if can_communicate:
+        actions.append(COMM_ACTION)
 
     return actions
 

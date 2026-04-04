@@ -3,11 +3,11 @@
 -    *    -
 l    -    -
 t    -    P
-p    -    -
+p    -    o
 ------M----
 
 Salad
-Burger
+OnionSalad
 
 2 1
 7 1

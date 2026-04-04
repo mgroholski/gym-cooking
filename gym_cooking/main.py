@@ -52,12 +52,33 @@ def parse_arguments():
         default=1,
         help="Number of tasks to place in the queue at reset.",
     )
+    parser.add_argument(
+        "--comm",
+        action="store_true",
+        default=False,
+        help="Toggles the agents ability to communicate.",
+    )
 
     parser.add_argument(
         "-r",
         type=float,
         default=0.05,
         help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
+    )
+
+    # Communication Parameters
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=2,
+        help="The factor that the task allocation is believed to increase by.",
+    )
+
+    parser.add_argument(
+        "--lambda-v",
+        type=float,
+        default=0.6,
+        help="The trust factor of the LLM's listening ability.",
     )
 
     # Delegation Planner
@@ -191,12 +212,17 @@ def main_loop(arglist):
 
     while not env.done():
         action_dict = {}
+        communication_dict = {}
 
         for idx, agent in enumerate(real_agents):
-            action = agent.select_action(obs=obs.get_agent_obs(idx))
+            action, comm = agent.select_action(obs=obs.get_agent_obs(idx))
             action_dict[agent.name] = action
+            if comm is not None:
+                communication_dict[agent.name] = comm
 
-        obs, _, _, info = env.step(action_dict=action_dict)
+        obs, _, _, info = env.step(
+            action_dict=action_dict, comm_dict=communication_dict
+        )
 
         # Agents
         for idx, agent in enumerate(real_agents):
