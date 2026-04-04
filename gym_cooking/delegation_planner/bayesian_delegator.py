@@ -1,6 +1,7 @@
 import copy
 from collections import defaultdict, namedtuple
 from itertools import combinations, permutations, product
+from types import LambdaType
 
 import navigation_planner.utils as nav_utils
 import numpy as np
@@ -27,6 +28,8 @@ class BayesianDelegator(Delegator):
         planner,
         none_action_prob,
         can_communiate,
+        lambda_factor,
+        gamma,
     ):
         """Initializing Bayesian Delegator for agent_name.
 
@@ -48,6 +51,8 @@ class BayesianDelegator(Delegator):
         self.planner = planner
         self.none_action_prob = none_action_prob
         self.can_communicate = can_communiate
+        self.lambda_factor = lambda_factor
+        self.gamma = gamma
 
     def should_reset_priors(self, obs, belief, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -503,7 +508,7 @@ class BayesianDelegator(Delegator):
                             remaining_subtasks=remaining_subtasks,
                             base_subtask_alloc=subtask_alloc,
                         )
-        return SubtaskAllocDistribution(subtask_allocs)
+        return SubtaskAllocDistribution(subtask_allocs, self.gamma)
 
     def add_greedy_subtasks(self):
         """Return the entire distribution of greedy subtask allocations.
@@ -524,7 +529,7 @@ class BayesianDelegator(Delegator):
                 )
             ]
             subtask_allocs.append(subtask_alloc)
-        return SubtaskAllocDistribution(subtask_allocs)
+        return SubtaskAllocDistribution(subtask_allocs, self.gamma)
 
     def add_dc_subtasks(self):
         """Return the entire distribution of divide & conquer subtask allocations.
@@ -544,7 +549,7 @@ class BayesianDelegator(Delegator):
                 for i in range(len(self.all_agent_names))
             ]
             subtask_allocs.append(subtask_alloc)
-        return SubtaskAllocDistribution(subtask_allocs)
+        return SubtaskAllocDistribution(subtask_allocs, self.gamma)
 
     def select_subtask(self, agent_name):
         """Return subtask and subtask_agent_names for agent with agent_name
@@ -565,9 +570,9 @@ class BayesianDelegator(Delegator):
                         )
                     ]
                 ]
-                self.probs = SubtaskAllocDistribution(subtask_allocs)
+                self.probs = SubtaskAllocDistribution(subtask_allocs, self.gamma)
 
-    def bayes_update(self, obs_tm1, b_tm1, a_tm1, beta):
+    def bayes_update(self, obs_tm1, b_tm1, a_tm1, comm_info, beta):
         """Apply Bayesian update based on previous observation (obs_tms1)
         and most recent actions taken (action_tm1). Beta is used to determine
         how rational agents act."""
@@ -593,15 +598,29 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if agent_name not in t.subtask_agent_names:
                     continue
-                p = self.prob_nav_actions(
+                p_action = self.prob_nav_actions(
                     obs_tm1=copy.copy(obs_tm1),
                     b_tm1=b_tm1,
                     actions_tm1=a_tm1,
                     subtask_alloc=subtask_alloc,
                     beta=beta,
                 )
-                update += len(t.subtask_agent_names) * p
+                update += len(t.subtask_agent_names) * p_action
 
+            comm_factor = 1.0
+            if comm_info is not None:
+                confidence = comm_info.get("confidence", 0.0)
+                comm_task_alloc = comm_info.get("task_alloc")
+                if comm_task_alloc is not None:
+                    lambda_val = self.lambda_factor * confidence
+                    matching = sum(
+                        1
+                        for t_i, t_i_prime in zip(subtask_alloc, comm_task_alloc)
+                        if t_i == t_i_prime
+                    )
+                    comm_factor = np.exp(lambda_val * matching)
+
+            update *= comm_factor
             self.probs.update(subtask_alloc=subtask_alloc, factor=update)
             print("UPDATING: subtask_alloc {} by {}".format(subtask_alloc, update))
         self.probs.normalize()

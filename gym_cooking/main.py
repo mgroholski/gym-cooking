@@ -66,6 +66,21 @@ def parse_arguments():
         help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
     )
 
+    # Communication Parameters
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=2,
+        help="The factor that the task allocation is believed to increase by.",
+    )
+
+    parser.add_argument(
+        "--lambda-v",
+        type=float,
+        default=0.6,
+        help="The trust factor of the LLM's listening ability.",
+    )
+
     # Delegation Planner
     parser.add_argument(
         "--beta",

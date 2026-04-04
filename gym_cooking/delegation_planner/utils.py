@@ -6,14 +6,14 @@ import numpy as np
 import scipy as sp
 from utils.utils import agent_settings
 
-GAMMA = 3
-
 
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
 
-    def __init__(self, subtask_allocs):
+    def __init__(self, subtask_allocs, gamma):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
+
+        self.gamma = gamma
 
         self.probs = {}
         if len(subtask_allocs) == 0:
@@ -40,6 +40,7 @@ class SubtaskAllocDistribution:
         new = self.__class__.__new__(self.__class__)
         new.keys = copy.copy(self.keys) if hasattr(self, "keys") else []
         new.probs = copy.deepcopy(self.probs)
+        new.gamma = self.gamma
         return new
 
     def to_tuple(self):
@@ -57,7 +58,7 @@ class SubtaskAllocDistribution:
     def get_comm_dist(self):
         cur_task_alloc = self.get_max()
         altered_dist = copy.copy(self)
-        altered_dist.probs[tuple(cur_task_alloc)] *= GAMMA
+        altered_dist.probs[tuple(cur_task_alloc)] *= self.gamma
         altered_dist.normalize()
 
         return altered_dist

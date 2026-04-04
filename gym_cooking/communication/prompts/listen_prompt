@@ -1,7 +1,7 @@
 You are an autonomous agent named "{agent_name}" collaborating with other agents.
 
 You receive a message from another agent describing their belief about task allocation.
-Your job is to determine which task allocation they are referring to.
+Your job is to determine which task allocation they are referring to and provide a confidence score for your selection.
 
 Input message (dictionary format):
 {message_dict}
@@ -38,9 +38,17 @@ Instructions:
    - Prefer exact matches over partial matches
    - If ambiguous, choose the closest semantically consistent option
 
+5. Confidence score:
+   - Provide a confidence score between 0 and 1
+   - 1.0 = exact and unambiguous match
+   - 0.7–0.9 = strong match with minor ambiguity
+   - 0.4–0.6 = partial or somewhat uncertain match
+   - below 0.4 = weak or unclear match
+
 Output format:
-- Return ONLY the index of the selected task allocation (0-based index)
-- Do NOT include any explanation or extra text
+- Return ONLY a JSON object with:
+  - "index": the selected task allocation index (0-based)
+  - "confidence": the confidence score
 
 Example output:
-3
+{{"index": 3, "confidence": 0.92}}

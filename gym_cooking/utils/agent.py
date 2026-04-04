@@ -99,15 +99,6 @@ class RealAgent:
             self.name, obs, self.existence_beliefs, self.delegator.probs
         )
 
-    def comm_update(self, obs):
-        believed_subtask_alloc = self.comm_func.listen(
-            self.name, obs, self.existence_beliefs, self.delegator.probs
-        )
-
-        breakpoint()
-
-        raise NotImplementedError()
-
     def get_holding(self):
         if self.holding is None:
             return "None"
@@ -124,9 +115,6 @@ class RealAgent:
             self.init_beliefs(obs)
 
         obs.ordered_subtasks_by_recipe = self.sw.ordered_subtasks_by_recipe
-
-        if len(obs.comms):
-            self.comm_update(obs)
 
         if obs.t != 0:
             self.belief_update(obs=obs)
@@ -200,6 +188,8 @@ class RealAgent:
             planner=self.planner,
             none_action_prob=self.none_action_prob,
             can_communiate=self.can_communicate,
+            lambda_factor=self.arglist.lambda_v,
+            gamma=self.arglist.gamma,
         )
 
     def reset_subtasks(self):
@@ -310,10 +300,17 @@ class RealAgent:
                 a_tm1 = {a.name: None for a in env.sim_agents}
                 a_tm1[self.name] = self.action
 
+                comm_info = None
+                if len(env.comms):
+                    comm_info = self.comm_func.listen(
+                        self.name, env, self.existence_beliefs, self.delegator.probs
+                    )
+
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
                     b_tm1=copy.copy(self.existence_beliefs_tm1),
                     a_tm1=a_tm1,
+                    comm_info=comm_info,
                     beta=self.beta,
                 )
         self.subtask_removed = False

@@ -52,9 +52,9 @@ class CommunicationFunctions:
         )
         return response.output_text
 
-    def listen(self, name, obs, existence_beliefs, task_alloc_dist) -> int:
-        messages = {k: v for k, v in obs.comms if k != name}
-        task_allocs = list(task_alloc_dist.keys)
+    def listen(self, name, obs, existence_beliefs, task_alloc_dist):
+        messages = {k: v for k, v in obs.comms.items() if k != name}
+        task_allocs = task_alloc_dist.keys
 
         if self.listen_prompt_template is None:
             raise FileNotFoundError(
@@ -85,16 +85,22 @@ class CommunicationFunctions:
                                 "minimum": 0,
                                 "maximum": max(0, len(task_allocs) - 1),
                                 "description": "0-based index of the selected task allocation",
-                            }
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                                "description": "Confidence score between 0 and 1",
+                            },
                         },
-                        "required": ["selected_index"],
+                        "required": ["selected_index", "confidence"],
                         "additionalProperties": False,
                     },
                 }
             },
         )
 
-        # With structured outputs, output_text should be valid JSON matching the schema.
+        # Parse response
         try:
             data = json.loads(response.output_text)
         except json.JSONDecodeError as e:
@@ -104,13 +110,24 @@ class CommunicationFunctions:
 
         if "selected_index" not in data:
             raise ValueError(f"Missing 'selected_index' in model output: {data!r}")
+        if "confidence" not in data:
+            raise ValueError(f"Missing 'confidence' in model output: {data!r}")
 
         selected_index = data["selected_index"]
+        confidence = data["confidence"]
 
         if not isinstance(selected_index, int):
             raise TypeError(
                 f"'selected_index' must be an int, got {type(selected_index).__name__}"
             )
+
+        if not isinstance(confidence, (int, float)):
+            raise TypeError(
+                f"'confidence' must be a number, got {type(confidence).__name__}"
+            )
+
+        if not (0.0 <= confidence <= 1.0):
+            raise ValueError(f"'confidence' must be between 0 and 1, got {confidence}")
 
         if not (0 <= selected_index < len(task_allocs)):
             raise ValueError(
@@ -119,4 +136,7 @@ class CommunicationFunctions:
             )
 
         task_alloc = task_allocs[selected_index]
-        return task_alloc
+
+        comm_info = {"confidence": confidence, "task_alloc": task_alloc}
+
+        return comm_info
