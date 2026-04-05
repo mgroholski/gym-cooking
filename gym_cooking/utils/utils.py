@@ -54,9 +54,10 @@ class ExistenceBeliefs:
     followed by binary normalization for each state.
     """
 
-    def __init__(self, obs, beta, subtasks_by_recipe, D=5):
+    def __init__(self, obs, beta, subtasks_by_recipe, can_communciate, D=5):
         self.beta = float(beta)
         self.D = int(D)
+        self.can_communicate = can_communciate
 
         beliefs: Dict[str, float] = {}
 
@@ -233,7 +234,9 @@ class ExistenceBeliefs:
         joint_prob = 1.0
         for sim_agent, action in zip(obs_tm1.sim_agents, observed_joint_action):
             if sim_agent.location is not None:
-                actions = nav_utils.get_single_actions(env=obs_tm1, agent=sim_agent)
+                actions = nav_utils.get_single_actions(
+                    env=obs_tm1, agent=sim_agent, can_communicate=self.can_communicate
+                )
                 if len(actions) <= 1:
                     action_prob = 1.0 if action == (0, 0) else 0.0
                 elif action == (0, 0):

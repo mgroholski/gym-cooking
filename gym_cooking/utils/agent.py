@@ -511,7 +511,11 @@ class RealAgent:
         """
 
         self.existence_beliefs = ExistenceBeliefs(
-            obs, self.beta, self.subtasks_by_recipe, self.arglist.D
+            obs,
+            self.beta,
+            self.subtasks_by_recipe,
+            self.can_communicate,
+            self.arglist.D,
         )
 
     def belief_update(self, obs):
