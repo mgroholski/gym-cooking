@@ -159,6 +159,8 @@ class BayesianDelegator(Delegator):
         """Removing subtask allocs from subtask_alloc_probs that are
         infeasible or where multiple agents are doing None together.
         """
+        none_cnt = 0
+        cur_agent_name = observation.get_visible_agent().name
         for subtask_alloc in subtask_alloc_probs.enumerate_subtask_allocs():
             if not self.subtask_alloc_is_doable(
                 belief=belief,
@@ -181,6 +183,14 @@ class BayesianDelegator(Delegator):
                 and len(subtask_alloc) > 1
             ):
                 subtask_alloc_probs.delete(subtask_alloc)
+
+            # If a agent is doing None then it doesn't really matter what the other agent is doing.
+            for t, subtask_agents in subtask_alloc:
+                if cur_agent_name in subtask_agents and t is None:
+                    if none_cnt > 1:
+                        subtask_alloc_probs.delete(subtask_alloc)
+                        break
+                    none_cnt += 1
 
         return subtask_alloc_probs
 
@@ -223,7 +233,6 @@ class BayesianDelegator(Delegator):
             return some_probs
 
         # Weight inversely by distance, penalizing None for the visible agent.
-        none_penalty = 0.05
         some_probs_copy = copy.copy(some_probs)
         for subtask_alloc in subtask_allocs:
             total_weight = 0
@@ -242,9 +251,6 @@ class BayesianDelegator(Delegator):
                 traceback.print_exc()
                 breakpoint()
                 exit(1)
-
-            if get_agent_subtask(subtask_alloc) is None:
-                total_weight *= none_penalty
 
             # Weight by number of nonzero subtasks.
             some_probs.update(
