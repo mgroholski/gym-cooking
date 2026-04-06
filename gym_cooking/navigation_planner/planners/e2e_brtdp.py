@@ -78,7 +78,7 @@ class E2E_BRTDP:
         # Setting up costs for value function.
         self.time_cost = 1.0
         self.action_cost = 0.1
-        self.comm_cost = 7.5
+        self.comm_cost = 10.0
 
     def __copy__(self):
         copy_ = E2E_BRTDP(

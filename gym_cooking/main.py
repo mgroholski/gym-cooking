@@ -70,7 +70,7 @@ def parse_arguments():
     parser.add_argument(
         "--gamma",
         type=float,
-        default=2,
+        default=1.3,
         help="The factor that the task allocation is believed to increase by.",
     )
 
