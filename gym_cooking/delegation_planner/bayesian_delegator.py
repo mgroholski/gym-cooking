@@ -259,37 +259,6 @@ class BayesianDelegator(Delegator):
             )
         return some_probs
 
-    def get_other_agent_planners(self, obs, backup_subtask):
-        """Use own beliefs to infer what other agents will do."""
-        # A dictionary mapping agent name to a planner.
-        # The planner is based on THIS agent's planner because agents are decentralized.
-        planners = {}
-        for other_agent_name in self.all_agent_names:
-            # Skip over myself.
-            if other_agent_name != self.agent_name:
-                # Get most likely subtask and subtask agents for other agent
-                # based on my beliefs.
-                subtask, subtask_agent_names = self.select_subtask(
-                    agent_name=other_agent_name
-                )
-
-                if subtask is None:
-                    # Using cooperative backup_subtask for this agent's None subtask.
-                    subtask = backup_subtask
-                    subtask_agent_names = tuple(
-                        sorted([other_agent_name, self.agent_name])
-                    )
-
-                # Assume your planner for other agents with the right settings.
-                planner = copy.copy(self.planner)
-                planner.set_settings(
-                    env=copy.copy(obs),
-                    subtask=subtask,
-                    subtask_agent_names=subtask_agent_names,
-                )
-                planners[other_agent_name] = planner
-        return planners
-
     def prob_nav_actions(
         self,
         obs_tm1,
