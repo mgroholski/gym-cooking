@@ -1,3 +1,4 @@
+import copy
 import random
 from collections import namedtuple
 
@@ -9,13 +10,17 @@ from utils.utils import agent_settings
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
 
-    def __init__(self, subtask_allocs):
+    def __init__(self, subtask_allocs, epsilon):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
 
-        self.probs = {}
+        self.epsilon = epsilon
+        self.D = 20
 
+        self.probs = {}
         if len(subtask_allocs) == 0:
             return
+
+        self.keys = subtask_allocs
         prior = 1.0 / (len(subtask_allocs))
         print("set prior", prior)
 
@@ -25,17 +30,45 @@ class SubtaskAllocDistribution:
     def __str__(self):
         s = ""
         for subtask_alloc, p in self.probs.items():
-            s += str(subtask_alloc) + ": " + str(p) + "\n"
+            s + "{"
+            for subtask, subtask_agent_names in subtask_alloc:
+                s += f"({subtask}, {subtask_agent_names}),"
+
+            s += "}: " + str(p) + "\n"
         return s
 
+    def __copy__(self):
+        new = self.__class__.__new__(self.__class__)
+        new.keys = copy.copy(self.keys) if hasattr(self, "keys") else []
+        new.probs = copy.deepcopy(self.probs)
+        new.epsilon = self.epsilon
+        new.D = self.D
+        return new
+
+    def to_tuple(self):
+        discretized = []
+        for k in self.keys:
+            p = self.probs[tuple(k)]
+            discretized.append(round(p * self.D) / self.D)
+        return tuple(discretized)
+
     def enumerate_subtask_allocs(self):
-        return list(self.probs.keys())
+        return list([k for k in self.probs.keys() if self.probs[k] != 0])
 
     def get_list(self):
         return list(self.probs.items())
 
     def get(self, subtask_alloc):
-        return self.probs[tuple(subtask_alloc)]
+        p = self.probs[tuple(subtask_alloc)]
+        return round(p * self.D) / self.D
+
+    def get_comm_dist(self):
+        cur_task_alloc = self.get_max()
+        altered_dist = copy.copy(self)
+        altered_dist.probs[tuple(cur_task_alloc)] *= self.epsilon
+        altered_dist.normalize()
+
+        return altered_dist
 
     def get_max(self):
         if len(self.probs) > 0:
@@ -81,10 +114,7 @@ class SubtaskAllocDistribution:
         self.probs[tuple(subtask_alloc)] *= factor
 
     def delete(self, subtask_alloc):
-        try:
-            del self.probs[tuple(subtask_alloc)]
-        except:
-            print("subtask_alloc {} not found in probsdict".format(subtask_alloc))
+        self.probs[tuple(subtask_alloc)] = 0.0
 
     def normalize(self):
         total = sum(self.probs.values())

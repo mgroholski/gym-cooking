@@ -6,6 +6,7 @@ from typing import Dict
 import navigation_planner.utils as nav_utils
 import numpy as np
 import recipe_planner.utils as recipe_utils
+from communication.comm_functions import CommunicationFunctions
 
 # Delegation planning
 from delegation_planner.bayesian_delegator import BayesianDelegator
@@ -62,7 +63,10 @@ class RealAgent:
             tau=arglist.tau,
             cap=arglist.cap,
             main_cap=arglist.main_cap,
+            can_communicate=arglist.comm,
         )
+
+        self.comm_func = CommunicationFunctions(self.arglist)
 
     def __str__(self):
         return color(self.name[-1], self.color)
@@ -99,14 +103,24 @@ class RealAgent:
         if obs.t == 0:
             self.setup_subtasks(env=obs)
 
-        # Select subtask based on Bayesian Delegation.
+        print("Task Allocation Probabilities: ")
+        print(str(self.delegator.probs))
 
+        # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
         self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
             agent_name=self.name,
         )
         self.plan(copy.copy(obs))
-        return self.action
+
+        self.task_alloc_dist_tm1 = copy.copy(self.delegator.probs)
+        comm = None
+        if self.action == nav_utils.COMM_ACTION:
+            comm = self.generate_communication(obs)
+        return self.action, comm
+
+    def generate_communication(self, obs):
+        return self.comm_func.speak(self.name, obs, self.delegator.probs)
 
     def get_subtasks(self, world) -> Dict:
         """Return different subtask permutations for active orders."""
@@ -153,6 +167,9 @@ class RealAgent:
             model_type=self.model_type,
             planner=self.planner,
             none_action_prob=self.none_action_prob,
+            epsilon=self.arglist.epsilon,
+            gamma=self.arglist.gamma,
+            can_communicate=self.arglist.comm,
         )
 
     def reset_subtasks(self):
@@ -163,6 +180,7 @@ class RealAgent:
 
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
+
         # Checks if the task queue has changed.
         if len(self.world.order_queue) != len(world.order_queue):
             """
@@ -262,9 +280,17 @@ class RealAgent:
                     priors_type=self.priors,
                 )
             else:
+                comm_info = None
+                if len(env.comms):
+                    comm_info = self.comm_func.listen(
+                        self.name, env, self.delegator.probs
+                    )
+
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
+                    task_alloc_dist_tm1=self.task_alloc_dist_tm1,
                     actions_tm1=env.agent_actions,
+                    comm_info=comm_info,
                     beta=self.beta,
                 )
         self.subtask_removed = False
@@ -294,7 +320,9 @@ class RealAgent:
 
         # If subtask is None, then do nothing.
         if (self.new_subtask is None) or (not self.new_subtask_agent_names):
-            actions = nav_utils.get_single_actions(env=env, agent=self)
+            actions = nav_utils.get_single_actions(
+                env=env, agent=self, can_communicate=self.arglist.comm
+            )
             probs = []
             for a in actions:
                 if a == (0, 0):
@@ -314,7 +342,9 @@ class RealAgent:
                     self.new_subtask if self.new_subtask is not None else self.subtask
                 )
                 other_agent_planners = self.delegator.get_other_agent_planners(
-                    obs=copy.copy(env), backup_subtask=backup_subtask
+                    obs=copy.copy(env),
+                    task_alloc_dist=copy.copy(self.delegator.probs),
+                    backup_subtask=backup_subtask,
                 )
 
             print(
@@ -325,6 +355,7 @@ class RealAgent:
 
             action = self.planner.get_next_action(
                 env=env,
+                task_alloc_dist=self.delegator.probs,
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
                 other_agent_planners=other_agent_planners,
@@ -454,6 +485,7 @@ class SimAgent:
         self.holding = None
         self.action = (0, 0)
         self.observable_cols = observable_cols
+        self.comm = None
 
     def __str__(self):
         return color(self.name[-1], self.color)

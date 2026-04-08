@@ -2,6 +2,7 @@ import copy
 from collections import defaultdict, namedtuple
 from itertools import combinations, permutations, product
 
+import navigation_planner.utils as nav_utils
 import numpy as np
 import recipe_planner.utils as recipe
 import scipy as sp
@@ -20,7 +21,15 @@ SubtaskAllocation = namedtuple("SubtaskAllocation", "subtask subtask_agent_names
 
 class BayesianDelegator(Delegator):
     def __init__(
-        self, agent_name, all_agent_names, model_type, planner, none_action_prob
+        self,
+        agent_name,
+        all_agent_names,
+        model_type,
+        planner,
+        none_action_prob,
+        epsilon,
+        gamma,
+        can_communicate,
     ):
         """Initializing Bayesian Delegator for agent_name.
 
@@ -41,6 +50,9 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
+        self.can_communicate = can_communicate
+        self.epsilon = epsilon
+        self.gamma = gamma
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -117,18 +129,13 @@ class BayesianDelegator(Delegator):
         if subtask is None:
             print("Subtask is none...")
             return 0
-        _ = self.planner.get_next_action(
-            env=obs,
-            subtask=subtask,
-            subtask_agent_names=subtask_agent_names,
-            other_agent_planners={},
+
+        start_obj, goal_obj = nav_utils.get_subtask_obj(subtask)
+        subtask_action_obj = nav_utils.get_subtask_action_obj(subtask)
+
+        value = obs.get_lower_bound_for_subtask_given_objs(
+            subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
         )
-        value = self.planner.v_l[
-            (
-                self.planner.cur_state.get_repr(),
-                subtask,
-            )
-        ]
 
         return value
 
@@ -207,7 +214,7 @@ class BayesianDelegator(Delegator):
             )
         return some_probs
 
-    def get_other_agent_planners(self, obs, backup_subtask):
+    def get_other_agent_planners(self, obs, task_alloc_dist, backup_subtask):
         """Use own beliefs to infer what other agents will do."""
         # A dictionary mapping agent name to a planner.
         # The planner is based on THIS agent's planner because agents are decentralized.
@@ -232,6 +239,7 @@ class BayesianDelegator(Delegator):
                 planner = copy.copy(self.planner)
                 planner.set_settings(
                     env=copy.copy(obs),
+                    task_alloc_dist=copy.copy(task_alloc_dist),
                     subtask=subtask,
                     subtask_agent_names=subtask_agent_names,
                 )
@@ -239,7 +247,7 @@ class BayesianDelegator(Delegator):
         return planners
 
     def get_appropriate_state_and_other_agent_planners(
-        self, obs_tm1, backup_subtask, no_level_1
+        self, obs_tm1, task_alloc_dist_tm1, backup_subtask, no_level_1
     ):
         """Return Level 1 planner if no_level_1 is False, otherwise
         return a Level 0 Planner."""
@@ -247,21 +255,34 @@ class BayesianDelegator(Delegator):
         if no_level_1:
             # Level 0 planning: Just use obs_tm1.
             state = obs_tm1
+            task_alloc_dist = task_alloc_dist_tm1
             # Assume other agents are fixed.
             other_planners = {}
         else:
             # Level 1 planning: Modify the state according to my beliefs.
-            state, _ = self.planner._get_modified_state_with_other_agent_actions(
-                state=obs_tm1,
+            state, task_alloc_dist, _ = (
+                self.planner._get_modified_state_with_other_agent_actions(
+                    state=obs_tm1,
+                    task_alloc_dist=task_alloc_dist_tm1,
+                )
             )
             # Get other agent planners under my current beliefs.
             other_planners = self.get_other_agent_planners(
-                obs=obs_tm1, backup_subtask=backup_subtask
+                obs=obs_tm1,
+                task_alloc_dist=task_alloc_dist_tm1,
+                backup_subtask=backup_subtask,
             )
-        return state, other_planners
+        return state, task_alloc_dist, other_planners
 
     def prob_nav_actions(
-        self, obs_tm1, actions_tm1, subtask, subtask_agent_names, beta, no_level_1
+        self,
+        obs_tm1,
+        task_alloc_dist_tm1,
+        actions_tm1,
+        subtask,
+        subtask_agent_names,
+        beta,
+        no_level_1,
     ):
         """Return probabability that subtask_agents performed subtask, given
         previous observations (obs_tm1) and actions (actions_tm1).
@@ -292,7 +313,16 @@ class BayesianDelegator(Delegator):
                 filter(lambda a: a.name == self.agent_name, obs_tm1.sim_agents)
             )[0]
             # Get the number of possible actions at obs_tm1 available to agent.
-            num_actions = len(get_single_actions(env=obs_tm1, agent=sim_agent)) - 1
+            num_actions = (
+                len(
+                    get_single_actions(
+                        env=obs_tm1,
+                        agent=sim_agent,
+                        can_communicate=self.can_communicate,
+                    )
+                )
+                - 1
+            )
             action_prob = (1.0 - self.none_action_prob) / (
                 num_actions
             )  # exclude (0, 0)
@@ -311,17 +341,24 @@ class BayesianDelegator(Delegator):
         if len(subtask_agent_names) == 1:
             action = action[0]
 
-        state, other_planners = self.get_appropriate_state_and_other_agent_planners(
-            obs_tm1=obs_tm1, backup_subtask=subtask, no_level_1=no_level_1
+        state, task_alloc_dist, other_planners = (
+            self.get_appropriate_state_and_other_agent_planners(
+                obs_tm1=obs_tm1,
+                task_alloc_dist_tm1=task_alloc_dist_tm1,
+                backup_subtask=subtask,
+                no_level_1=no_level_1,
+            )
         )
         self.planner.set_settings(
             env=obs_tm1,
+            task_alloc_dist=task_alloc_dist_tm1,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_planners,
         )
         old_q = self.planner.Q(
             state=state,
+            task_alloc_dist=task_alloc_dist,
             action=action,
             value_f=self.planner.v_l,
         )
@@ -353,6 +390,7 @@ class BayesianDelegator(Delegator):
             old_q
             - self.planner.Q(
                 state=state,
+                task_alloc_dist=task_alloc_dist,
                 action=nav_action,
                 value_f=self.planner.v_l,
             )
@@ -486,7 +524,7 @@ class BayesianDelegator(Delegator):
                             remaining_subtasks=remaining_subtasks,
                             base_subtask_alloc=subtask_alloc,
                         )
-        return SubtaskAllocDistribution(subtask_allocs)
+        return SubtaskAllocDistribution(subtask_allocs, self.epsilon)
 
     def add_greedy_subtasks(self):
         """Return the entire distribution of greedy subtask allocations.
@@ -507,7 +545,7 @@ class BayesianDelegator(Delegator):
                 )
             ]
             subtask_allocs.append(subtask_alloc)
-        return SubtaskAllocDistribution(subtask_allocs)
+        return SubtaskAllocDistribution(subtask_allocs, self.epsilon)
 
     def add_dc_subtasks(self):
         """Return the entire distribution of divide & conquer subtask allocations.
@@ -527,7 +565,7 @@ class BayesianDelegator(Delegator):
                 for i in range(len(self.all_agent_names))
             ]
             subtask_allocs.append(subtask_alloc)
-        return SubtaskAllocDistribution(subtask_allocs)
+        return SubtaskAllocDistribution(subtask_allocs, self.epsilon)
 
     def select_subtask(self, agent_name):
         """Return subtask and subtask_agent_names for agent with agent_name
@@ -550,9 +588,9 @@ class BayesianDelegator(Delegator):
                         )
                     ]
                 ]
-                self.probs = SubtaskAllocDistribution(subtask_allocs)
+                self.probs = SubtaskAllocDistribution(subtask_allocs, self.epsilon)
 
-    def bayes_update(self, obs_tm1, actions_tm1, beta):
+    def bayes_update(self, obs_tm1, task_alloc_dist_tm1, actions_tm1, comm_info, beta):
         """Apply Bayesian update based on previous observation (obs_tms1)
         and most recent actions taken (actions_tm1). Beta is used to determine
         how rational agents act."""
@@ -580,6 +618,7 @@ class BayesianDelegator(Delegator):
                     if self.agent_name in t.subtask_agent_names:
                         update += self.prob_nav_actions(
                             obs_tm1=copy.copy(obs_tm1),
+                            task_alloc_dist_tm1=copy.copy(task_alloc_dist_tm1),
                             actions_tm1=actions_tm1,
                             subtask=t.subtask,
                             subtask_agent_names=t.subtask_agent_names,
@@ -589,6 +628,7 @@ class BayesianDelegator(Delegator):
                 else:
                     p = self.prob_nav_actions(
                         obs_tm1=copy.copy(obs_tm1),
+                        task_alloc_dist_tm1=copy.copy(task_alloc_dist_tm1),
                         actions_tm1=actions_tm1,
                         subtask=t.subtask,
                         subtask_agent_names=t.subtask_agent_names,
@@ -596,6 +636,13 @@ class BayesianDelegator(Delegator):
                         no_level_1=False,
                     )
                     update += len(t.subtask_agent_names) * p
+
+            if comm_info is not None:
+                subtask_alloc_tuple = tuple(subtask_alloc)
+                if subtask_alloc_tuple in comm_info:
+                    update += np.log(self.gamma) + np.log(
+                        comm_info[subtask_alloc_tuple]
+                    )
 
             self.probs.update(subtask_alloc=subtask_alloc, factor=update)
             print("UPDATING: subtask_alloc {} by {}".format(subtask_alloc, update))

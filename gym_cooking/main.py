@@ -43,10 +43,16 @@ def parse_arguments():
         "--partially-observable",
         action="store_true",
         default=False,
-        help="Use partial observability instead of full observability",
+        help="Use partial observability instead of full observability.",
     )
     parser.add_argument(
-        "--order-queue-size",
+        "--comm",
+        action="store_true",
+        default=False,
+        help="Allow the agents to communicate.",
+    )
+    parser.add_argument(
+        "--queue-size",
         type=int,
         default=1,
         help="Number of orders to place in the queue at reset",
@@ -57,6 +63,21 @@ def parse_arguments():
         type=float,
         default=0.05,
         help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
+    )
+
+    # Communication Parameters
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=1.3,
+        help="The factor that the task allocation is believed to increase by.",
+    )
+
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=1.0,
+        help="The trust factor of the LLM's listening ability.",
     )
 
     # Delegation Planner
@@ -184,12 +205,15 @@ def main_loop(arglist):
 
     while not env.done():
         action_dict = {}
+        comm_dict = {}
 
         for idx, agent in enumerate(real_agents):
-            action = agent.select_action(obs=obs.get_agent_obs(idx))
+            action, comm = agent.select_action(obs=obs.get_agent_obs(idx))
             action_dict[agent.name] = action
+            if comm is not None:
+                comm_dict[agent.name] = comm
 
-        obs, _, _, info = env.step(action_dict=action_dict)
+        obs, _, _, info = env.step(action_dict=action_dict, comm_dict=comm_dict)
 
         # Agents
         for idx, agent in enumerate(real_agents):

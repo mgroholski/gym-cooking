@@ -46,6 +46,7 @@ class OvercookedEnvironment(gym.Env):
         self.successful = False
         self.order_queue = []
         self.hidden_order_queue = []
+        self.comms = {}
 
     def get_repr(self):
         return self.world.get_repr() + tuple(
@@ -69,6 +70,7 @@ class OvercookedEnvironment(gym.Env):
         new_env.order_queue = copy.deepcopy(self.order_queue)
         new_env.hidden_order_queue = copy.deepcopy(self.hidden_order_queue)
         new_env.world.order_queue = new_env.order_queue
+        new_env.comms = copy.deepcopy(self.comms)
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -83,7 +85,7 @@ class OvercookedEnvironment(gym.Env):
             self.arglist.level,
             self.arglist.num_agents,
             self.arglist.seed,
-            self.arglist.order_queue_size,
+            self.arglist.queue_size,
         )
         model = ""
         if self.arglist.model1 is not None:
@@ -98,6 +100,10 @@ class OvercookedEnvironment(gym.Env):
             model += "_partially-observable"
         else:
             model += "_fully-observable"
+
+        if self.arglist.comm:
+            model += "_comm"
+
         self.filename += model
 
     def get_agent_obs(self, agent_idx):
@@ -231,7 +237,7 @@ class OvercookedEnvironment(gym.Env):
     def close(self):
         return
 
-    def step(self, action_dict):
+    def step(self, action_dict, comm_dict):
         # Track internal environment info.
         self.t += 1
         print("===============================")
@@ -241,6 +247,9 @@ class OvercookedEnvironment(gym.Env):
         # Get actions.
         for sim_agent in self.sim_agents:
             sim_agent.action = action_dict[sim_agent.name]
+            sim_agent.comm = (
+                comm_dict[sim_agent.name] if sim_agent.name in comm_dict else None
+            )
 
         # Check collisions.
         self.check_collisions()
@@ -248,6 +257,7 @@ class OvercookedEnvironment(gym.Env):
 
         # Execute.
         self.execute_navigation()
+        self.comms = comm_dict
         self.update_order_queue()
 
         # Visualize.
@@ -350,12 +360,12 @@ class OvercookedEnvironment(gym.Env):
             )
 
     def initialize_order_queue(self):
-        self.order_queue_size = int(getattr(self.arglist, "order_queue_size", 1))
-        if self.order_queue_size <= 0 or not self.recipes:
+        self.queue_size = int(getattr(self.arglist, "queue_size", 1))
+        if self.queue_size <= 0 or not self.recipes:
             self.hidden_order_queue = []
         else:
             recipe_indices = np.random.choice(
-                len(self.recipes), size=self.order_queue_size, replace=True
+                len(self.recipes), size=self.queue_size, replace=True
             )
             self.hidden_order_queue = [
                 Order(self.recipes[i], idx) for idx, i in enumerate(recipe_indices)
@@ -482,6 +492,28 @@ class OvercookedEnvironment(gym.Env):
 
         return A_locs, B_locs
 
+    def get_lower_bound_for_task_alloc_dist(self, task_alloc_dist):
+        """Return the lower bound distance (shortest path) under this subtask between objects."""
+        expected_value = 0
+        for task_alloc in task_alloc_dist.enumerate_subtask_allocs():
+            p = task_alloc_dist.get(task_alloc)
+            if p == 0:
+                continue
+
+            for subtask, subtask_agent_names in task_alloc:
+                start_obj, goal_obj = nav_utils.get_subtask_obj(subtask)
+                subtask_action_obj = nav_utils.get_subtask_action_obj(subtask)
+
+                expected_value += p * self.get_lower_bound_for_subtask_given_objs(
+                    subtask,
+                    subtask_agent_names,
+                    start_obj,
+                    goal_obj,
+                    subtask_action_obj,
+                )
+
+        return expected_value
+
     def get_lower_bound_for_subtask_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
     ):
@@ -514,6 +546,7 @@ class OvercookedEnvironment(gym.Env):
                 filter(lambda a: a.name in subtask_agent_names, self.sim_agents)
             )
         ]
+
         A_locs, B_locs = self.get_AB_locs_given_objs(
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,

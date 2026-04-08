@@ -9,7 +9,7 @@ def interact(agent, world):
     """
 
     # agent does nothing (i.e. no arrow key)
-    if agent.action == (0, 0):
+    if agent.action == (0, 0) or agent.action == (-1, -1):
         return
 
     action_x, action_y = world.inbounds(
