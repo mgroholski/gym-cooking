@@ -27,7 +27,7 @@ def interact(agent, world):
         # if delivery in front --> deliver
         if isinstance(gs, Delivery):
             obj = agent.holding
-            if obj.is_deliverable():
+            if obj.is_deliverable() and world.process_delivery(obj):
                 """
                 The goal state and subtask completion is measured by another object
                 being at the delivered location than the state before.
@@ -35,7 +35,6 @@ def interact(agent, world):
                 """
                 gs.acquire(obj)
                 agent.release()
-                world.process_delivery(obj)
 
                 print("\nDelivered {}!".format(obj.full_name))
 
@@ -56,7 +55,7 @@ def interact(agent, world):
                     agent.release()
 
         # if holding something, empty gridsquare in front --> chop, cook, or drop
-        elif not world.is_occupied(gs.location):
+        elif not world.is_occupied(gs.location) and not gs.is_dispenser:
             obj = agent.holding
             if (
                 isinstance(gs, Cutboard)
@@ -95,6 +94,10 @@ def interact(agent, world):
                 obj.cook()
             else:
                 gs.release()
+                agent.acquire(obj)
+        elif world.is_occupied(gs.location) and isinstance(gs, Delivery):
+            obj = gs.release()
+            if obj is not None:
                 agent.acquire(obj)
 
         # if empty in front --> interact

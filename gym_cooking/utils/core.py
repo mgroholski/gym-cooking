@@ -148,7 +148,6 @@ class Delivery(GridSquare):
 
     def acquire(self, obj):
         obj.location = self.location
-        obj.is_delivered = True
         self.holding.append(obj)
 
     def release(self):

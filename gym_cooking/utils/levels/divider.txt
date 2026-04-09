@@ -1,10 +1,10 @@
---|---/--
--   -   |
--   *   -
-l   -   -
-t   -   P
-p   -   o
-------M--
+--|-/--
+-  -  |
+-  *  -
+l  -  -
+t  -  P
+p  -  o
+-----M-
 
 Salad
 OnionSalad
@@ -12,7 +12,7 @@ SimpleLettuce
 SimpleTomato
 
 2 1
-7 1
+5 1
 
-0 5
-5 10
+0 3
+3 6
