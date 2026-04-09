@@ -95,7 +95,6 @@ def interact(agent, world):
                 obj.cook()
             else:
                 gs.release()
-
                 agent.acquire(obj)
 
         # if empty in front --> interact

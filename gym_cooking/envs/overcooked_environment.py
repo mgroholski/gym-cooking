@@ -156,6 +156,11 @@ class OvercookedEnvironment(gym.Env):
                             self.world.insert(obj=obj)
                             counter.is_dispenser = True
 
+                            if rep == "p":
+                                if self.world.plate_disp_loc is not None:
+                                    raise Exception("Can only have 1 plate dispenser!")
+                                self.world.plate_disp_loc = (x, y)
+
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
@@ -382,6 +387,8 @@ class OvercookedEnvironment(gym.Env):
                 self.add_order_to_queue()
 
         self.world.order_queue = self.task_queue
+        plate_disp = self.world.get_gridsquare_at(self.world.plate_disp_loc)
+        plate_disp.cnt = len(self.world.order_queue)
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
@@ -631,6 +638,15 @@ class OvercookedEnvironment(gym.Env):
                 (not len(self.task_queue)) or (np.random.random() < new_order_prob)
             ):
                 self.add_order_to_queue()
+                plate_gs = self.world.get_gridsquare_at(self.world.plate_disp_loc)
+
+                if not plate_gs.cnt:
+                    obj = Object(
+                        location=self.world.plate_disp_loc, contents=RepToClass["p"]()
+                    )
+                    plate_gs.acquire(obj)
+                    self.world.insert(obj)
+                plate_gs.cnt += 1
 
     def cache_distances(self):
         """Saving distances between world objects."""

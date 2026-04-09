@@ -160,6 +160,7 @@ class RealAgent:
 
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
+
         self.subtask_to_wrapper_dict = self.get_subtasks(env.recipes, env.world)
         self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
 
@@ -187,7 +188,6 @@ class RealAgent:
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
 
-        # Checks if the task queue has changed.
         if len(self.world.task_queue) != len(world.task_queue):
             """
             Get sub-tasks from new_orders then increment or add to the incomplete subtask

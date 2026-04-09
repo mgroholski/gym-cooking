@@ -23,6 +23,7 @@ class World:
         self.arglist = arglist
         self.objects = defaultdict(lambda: [])
         self.task_queue = []
+        self.plate_disp_loc = None
 
     def get_repr(self):
         return self.get_dynamic_objects() + self.get_task_queue_repr()
@@ -411,7 +412,7 @@ class World:
         )
 
         gs = self.get_gridsquare_at(location)
-        if gs.is_dispenser:
+        if gs.is_dispenser and not (gs.cnt is not None and gs.cnt == 1):
             obj_copy = copy.deepcopy(objs[0])
             self.insert(obj_copy)
             return obj_copy

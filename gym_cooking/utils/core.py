@@ -38,6 +38,7 @@ class GridSquare:
         self.collidable = True  # cannot go through
         self.dynamic = False  # cannot move around
         self.is_dispenser = False
+        self.cnt = None
 
     def __str__(self):
         return color(self.rep, self.color)
@@ -59,8 +60,13 @@ class GridSquare:
 
     def release(self):
         temp = self.holding
-        if not self.is_dispenser:
+
+        if self.cnt is not None:
+            self.cnt -= 1
+
+        if not self.is_dispenser or (self.cnt is not None and not self.cnt):
             self.holding = None
+
         return temp
 
 
