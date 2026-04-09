@@ -44,8 +44,8 @@ class OvercookedEnvironment(gym.Env):
         self.collisions = []
         self.termination_info = ""
         self.successful = False
-        self.order_queue = []
-        self.hidden_order_queue = []
+        self.task_queue = []
+        self.hidden_task_queue = []
         self.comms = {}
 
     def get_repr(self):
@@ -67,9 +67,9 @@ class OvercookedEnvironment(gym.Env):
         new_env.world = copy.copy(self.world)
         new_env.sim_agents = [copy.copy(a) for a in self.sim_agents]
         new_env.distances = self.distances
-        new_env.order_queue = copy.deepcopy(self.order_queue)
-        new_env.hidden_order_queue = copy.deepcopy(self.hidden_order_queue)
-        new_env.world.order_queue = new_env.order_queue
+        new_env.task_queue = copy.deepcopy(self.task_queue)
+        new_env.hidden_task_queue = copy.deepcopy(self.hidden_task_queue)
+        new_env.world.task_queue = new_env.task_queue
         new_env.comms = copy.deepcopy(self.comms)
 
         # Make sure new objects and new agents' holdings have the right pointers.
@@ -210,7 +210,7 @@ class OvercookedEnvironment(gym.Env):
         self.collisions = []
         self.termination_info = ""
         self.successful = False
-        self.order_queue = []
+        self.task_queue = []
 
         # Load world & distances.
         self.load_level(level=self.arglist.level, num_agents=self.arglist.num_agents)
@@ -292,8 +292,8 @@ class OvercookedEnvironment(gym.Env):
             return True
 
         # Done if all orders in the queue have been delivered.
-        if all([o.is_complete for o in self.order_queue]) and not len(
-            self.hidden_order_queue
+        if all([o.is_complete for o in self.task_queue]) and not len(
+            self.hidden_task_queue
         ):
             self.termination_info = "Terminating because all orders were delivered"
             self.successful = True
@@ -325,7 +325,7 @@ class OvercookedEnvironment(gym.Env):
 
     def run_recipes(self):
         """Returns different permutations of completing recipes."""
-        active_orders = self.order_queue
+        active_orders = self.task_queue
 
         if active_orders:
             recipes = list({o.recipe.name: o.recipe for o in active_orders}.values())
@@ -351,9 +351,9 @@ class OvercookedEnvironment(gym.Env):
         return all_subtasks
 
     def add_order_to_queue(self):
-        if len(self.hidden_order_queue):
-            popped_order = self.hidden_order_queue.pop(0)
-            self.order_queue.append(popped_order)
+        if len(self.hidden_task_queue):
+            popped_order = self.hidden_task_queue.pop(0)
+            self.task_queue.append(popped_order)
             popped_order.start_t = self.t
             print(
                 f"APPENDING ORDER: Adding {popped_order.recipe.name} to order queue at timestep {self.t}."
@@ -362,26 +362,26 @@ class OvercookedEnvironment(gym.Env):
     def initialize_order_queue(self):
         self.queue_size = int(getattr(self.arglist, "queue_size", 1))
         if self.queue_size <= 0 or not self.recipes:
-            self.hidden_order_queue = []
+            self.hidden_task_queue = []
         else:
             recipe_indices = np.random.choice(
                 len(self.recipes), size=self.queue_size, replace=True
             )
-            self.hidden_order_queue = [
+            self.hidden_task_queue = [
                 Order(self.recipes[i], idx) for idx, i in enumerate(recipe_indices)
             ]
 
-        print("Order Queue: ", [r.get_repr() for r in self.hidden_order_queue])
+        print("Order Queue: ", [r.get_repr() for r in self.hidden_task_queue])
 
         if self.arglist.play or not self.arglist.partially_observable:
-            self.order_queue = self.hidden_order_queue
-            self.hidden_order_queue = []
+            self.task_queue = self.hidden_task_queue
+            self.hidden_task_queue = []
         else:
-            self.order_queue = []
-            if len(self.hidden_order_queue):
+            self.task_queue = []
+            if len(self.hidden_task_queue):
                 self.add_order_to_queue()
 
-        self.world.order_queue = self.order_queue
+        self.world.order_queue = self.task_queue
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
@@ -627,8 +627,8 @@ class OvercookedEnvironment(gym.Env):
     def update_order_queue(self):
         if self.arglist.partially_observable:
             new_order_prob = self.arglist.r
-            if len(self.hidden_order_queue) and (
-                (not len(self.order_queue)) or (np.random.random() < new_order_prob)
+            if len(self.hidden_task_queue) and (
+                (not len(self.task_queue)) or (np.random.random() < new_order_prob)
             ):
                 self.add_order_to_queue()
 

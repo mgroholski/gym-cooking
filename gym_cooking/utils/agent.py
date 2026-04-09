@@ -104,8 +104,14 @@ class RealAgent:
         if obs.t == 0:
             self.setup_subtasks(env=obs)
 
-        print("Task Allocation Probabilities: ")
-        print(str(self.delegator.probs))
+        print("===============================")
+        print(f"[{self.name}.select_action] @ TIMESTEP {obs.t}")
+        print("===============================")
+        print(f"Task Allocation Probabilities:\n{str(self.delegator.probs)}")
+        print(
+            "Incomplete Subtasks:\n",
+            "\n".join([f"\t{str(v)}" for v in self.subtask_to_wrapper_dict.values()]),
+        )
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
@@ -114,7 +120,11 @@ class RealAgent:
         )
         self.plan(copy.copy(obs))
 
-        self.task_alloc_p_tm1 = self.delegator.probs.get(self.delegator.probs.get_max())
+        max_subtask_alloc = self.delegator.probs.get_max()
+        if max_subtask_alloc is not None:
+            self.task_alloc_p_tm1 = self.delegator.probs.get(max_subtask_alloc)
+        else:
+            self.task_alloc_p_tm1 = 1
 
         comm = None
         if self.action == nav_utils.COMM_ACTION:
@@ -124,39 +134,33 @@ class RealAgent:
     def generate_communication(self, obs):
         return self.comm_func.speak(self.name, obs, self.delegator.probs.get_max())
 
-    def get_subtasks(self, world) -> Dict:
+    def get_subtasks(self, recipes, world) -> Dict:
         """Return different subtask permutations for active orders."""
 
-        active_orders = list(getattr(world, "order_queue", []))
+        active_tasks = list(getattr(world, "task_queue", []))
 
-        if active_orders:
-            recipes = list(set([o.recipe for o in active_orders]))
-        else:
+        if not len(active_tasks):
             return {}
 
         self.sw = STRIPSWorld(world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
-        subtasks_by_recipe = self.sw.get_subtasks(
+        self.subtasks_by_recipe = self.sw.get_subtasks(
             max_path_length=self.arglist.max_num_subtasks
         )
 
         all_subtasks = {}
-        for order in active_orders:
-            for subtask in subtasks_by_recipe[order.recipe.name]:
+        for order in active_tasks:
+            for subtask in self.subtasks_by_recipe[order.recipe.name]:
                 if subtask in all_subtasks:
                     all_subtasks[subtask].cnt += 1
                 else:
                     all_subtasks[subtask] = ActionCntWrapper(subtask)
 
-        # Uncomment below to view graph for recipe path i
-        # i = 0
-        # pg = recipe_utils.make_predicate_graph(self.sw.initial, recipe_paths[i])
-        # ag = recipe_utils.make_action_graph(self.sw.initial, recipe_paths[i])
         return all_subtasks
 
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
-        self.subtask_to_wrapper_dict = self.get_subtasks(env.world)
+        self.subtask_to_wrapper_dict = self.get_subtasks(env.recipes, env.world)
         self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
 
         print(
@@ -189,17 +193,17 @@ class RealAgent:
             Get sub-tasks from new_orders then increment or add to the incomplete subtask
             list.
             """
-            new_orders = world.order_queue[
-                len(self.world.order_queue) + 1 : len(world.order_queue)
+            new_tasks = world.task_queue[
+                len(self.world.task_queue) : len(world.task_queue)
             ]
-            new_recipes = list(set([o.recipe for o in new_orders]))
+            new_recipes = list(set([o.recipe for o in new_tasks]))
             self.sw = STRIPSWorld(world, new_recipes)
             subtasks_by_recipe = self.sw.get_subtasks(
                 max_path_length=self.arglist.max_num_subtasks
             )
 
-            for order in new_orders:
-                for subtask in subtasks_by_recipe[order.recipe.name]:
+            for task in new_tasks:
+                for subtask in subtasks_by_recipe[task.recipe.name]:
                     if subtask in self.subtask_to_wrapper_dict:
                         self.subtask_to_wrapper_dict[subtask].cnt += 1
                     else:

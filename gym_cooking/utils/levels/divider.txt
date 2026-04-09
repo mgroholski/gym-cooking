@@ -8,6 +8,8 @@ p   -   o
 
 Salad
 OnionSalad
+SimpleLettuce
+SimpleTomato
 
 2 1
 7 1
