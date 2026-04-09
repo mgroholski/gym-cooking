@@ -188,7 +188,7 @@ class RealAgent:
         """Refresh subtasks---relevant for Bayesian Delegation."""
 
         # Checks if the task queue has changed.
-        if len(self.world.order_queue) != len(world.order_queue):
+        if len(self.world.task_queue) != len(world.task_queue):
             """
             Get sub-tasks from new_orders then increment or add to the incomplete subtask
             list.
@@ -210,9 +210,8 @@ class RealAgent:
                         self.subtask_to_wrapper_dict[subtask] = ActionCntWrapper(
                             subtask
                         )
-                    # Adds back to incomplete subtask list if new or incremented from 0.
-                    if self.subtask_to_wrapper_dict[subtask] == 1:
-                        self.incomplete_subtasks.append(subtask)
+
+            self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
 
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False

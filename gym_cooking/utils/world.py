@@ -25,10 +25,10 @@ class World:
         self.task_queue = []
 
     def get_repr(self):
-        return self.get_dynamic_objects() + self.get_order_queue_repr()
+        return self.get_dynamic_objects() + self.get_task_queue_repr()
 
-    def get_order_queue_repr(self):
-        return OrderQueueRepr(orders=tuple(o.get_repr() for o in self.order_queue))
+    def get_task_queue_repr(self):
+        return OrderQueueRepr(orders=tuple(o.get_repr() for o in self.task_queue))
 
     def __str__(self):
         _display = list(map(lambda x: "".join(map(lambda y: y + " ", x)), self.rep))
@@ -38,7 +38,7 @@ class World:
         new = World(self.arglist)
         new.__dict__ = self.__dict__.copy()
         new.objects = copy.deepcopy(self.objects)
-        new.order_queue = copy.deepcopy(self.order_queue)
+        new.task_queue = copy.deepcopy(self.task_queue)
         new.reachability_graph = self.reachability_graph
         new.distances = self.distances
         return new
@@ -327,7 +327,7 @@ class World:
         matching_order_idx = next(
             (
                 idx
-                for idx, order in enumerate(self.order_queue)
+                for idx, order in enumerate(self.task_queue)
                 if order.recipe.full_state_plate_name == obj.full_name
                 and not order.is_complete
             ),
@@ -335,7 +335,7 @@ class World:
         )
 
         if matching_order_idx >= 0:
-            completed_dish = self.order_queue[matching_order_idx]
+            completed_dish = self.task_queue[matching_order_idx]
             completed_dish.is_complete = True
             obj.is_delivered = True
             print(

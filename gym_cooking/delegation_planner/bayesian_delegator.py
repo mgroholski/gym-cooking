@@ -75,6 +75,7 @@ class BayesianDelegator(Delegator):
         self.incomplete_subtasks = incomplete_subtasks
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
+
         # Compare previously available subtasks with currently available subtasks.
         is_reseting_priors = not (
             len(self.probs.enumerate_subtask_allocs())
