@@ -219,7 +219,7 @@ class OvercookedEnvironment(gym.Env):
 
         # Load world & distances.
         self.load_level(level=self.arglist.level, num_agents=self.arglist.num_agents)
-        self.initialize_order_queue()
+        self.initialize_task_queue()
         self.all_subtasks = self.run_recipes()
         self.world.make_loc_to_gridsquare()
         self.world.make_reachability_graph()
@@ -263,7 +263,7 @@ class OvercookedEnvironment(gym.Env):
         # Execute.
         self.execute_navigation()
         self.comms = comm_dict
-        self.update_order_queue()
+        self.update_task_queue()
 
         # Visualize.
         self.display()
@@ -364,7 +364,7 @@ class OvercookedEnvironment(gym.Env):
                 f"APPENDING ORDER: Adding {popped_order.recipe.name} to order queue at timestep {self.t}."
             )
 
-    def initialize_order_queue(self):
+    def initialize_task_queue(self):
         self.queue_size = int(getattr(self.arglist, "queue_size", 1))
         if self.queue_size <= 0 or not self.recipes:
             self.hidden_task_queue = []
@@ -386,9 +386,9 @@ class OvercookedEnvironment(gym.Env):
             if len(self.hidden_task_queue):
                 self.add_order_to_queue()
 
-        self.world.order_queue = self.task_queue
+        self.world.task_queue = self.task_queue
         plate_disp = self.world.get_gridsquare_at(self.world.plate_disp_loc)
-        plate_disp.cnt = len(self.world.order_queue)
+        plate_disp.cnt = len(self.world.task_queue)
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
@@ -631,7 +631,7 @@ class OvercookedEnvironment(gym.Env):
             interact(agent=agent, world=self.world)
             self.agent_actions[agent.name] = agent.action
 
-    def update_order_queue(self):
+    def update_task_queue(self):
         if self.arglist.partially_observable:
             new_order_prob = self.arglist.r
             if len(self.hidden_task_queue) and (

@@ -90,7 +90,7 @@ class Game:
             pygame.display.update()
 
     def draw_order_queue(self, order_row_y, x_offset=0):
-        order_queue = list(getattr(self.world, "order_queue", []))
+        order_queue = list(getattr(self.world, "task_queue", []))
         for idx, order in enumerate(order_queue):
             order_name = order.recipe.full_state_name
             order_x = idx * self.scale + x_offset
