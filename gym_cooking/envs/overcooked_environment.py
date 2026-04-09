@@ -492,28 +492,6 @@ class OvercookedEnvironment(gym.Env):
 
         return A_locs, B_locs
 
-    def get_lower_bound_for_task_alloc_dist(self, task_alloc_dist):
-        """Return the lower bound distance (shortest path) under this subtask between objects."""
-        expected_value = 0
-        for task_alloc in task_alloc_dist.enumerate_subtask_allocs():
-            p = task_alloc_dist.get(task_alloc)
-            if p == 0:
-                continue
-
-            for subtask, subtask_agent_names in task_alloc:
-                start_obj, goal_obj = nav_utils.get_subtask_obj(subtask)
-                subtask_action_obj = nav_utils.get_subtask_action_obj(subtask)
-
-                expected_value += p * self.get_lower_bound_for_subtask_given_objs(
-                    subtask,
-                    subtask_agent_names,
-                    start_obj,
-                    goal_obj,
-                    subtask_action_obj,
-                )
-
-        return expected_value
-
     def get_lower_bound_for_subtask_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
     ):

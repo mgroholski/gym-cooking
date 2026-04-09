@@ -44,7 +44,7 @@ class E2E_BRTDP:
     paper: http://www.cs.cmu.edu/~ggordon/mcmahan-likhachev-gordon.brtdp.pdf
     """
 
-    def __init__(self, alpha, tau, cap, main_cap, can_communicate):
+    def __init__(self, alpha, tau, cap, main_cap, epsilon, can_communicate):
         """
         Initializes BRTDP algorithm with its hyper-parameters.
         Rf. BRTDP paper for how these hyper-parameters are used in their
@@ -63,6 +63,7 @@ class E2E_BRTDP:
         self.cap = cap
         self.main_cap = main_cap
 
+        self.epsilon = epsilon
         self.can_communicate = can_communicate
 
         self.v_l = {}
@@ -89,14 +90,21 @@ class E2E_BRTDP:
             tau=self.tau,
             cap=self.cap,
             main_cap=self.main_cap,
+            epsilon=self.epsilon,
             can_communicate=self.can_communicate,
         )
         copy_.__dict__ = self.__dict__.copy()
         return copy_
 
-    def T(self, state, task_alloc_dist, action):
+    def T(self, state_repr, task_alloc_p, action):
         """Return next states when taking action from state."""
+        state = self.repr_to_env_dict[state_repr]
         subtask_agents = self.get_subtask_agents(env_state=state)
+
+        sim_task_alloc_p = task_alloc_p
+
+        if action == nav_utils.COMM_ACTION:
+            sim_task_alloc_p *= self.epsilon
 
         # Single agent
         if not self.is_joint:
@@ -127,9 +135,9 @@ class E2E_BRTDP:
 
         # Track this state in value function and repr dict
         # if it's a new state.
-        self.repr_init(env_state=sim_state, task_alloc_dist=task_alloc_dist)
-        self.value_init(env_state=sim_state, task_alloc_dist=task_alloc_dist)
-        return sim_state, task_alloc_dist
+        self.repr_init(env_state=sim_state)
+        self.value_init(env_state=sim_state, task_alloc_p=sim_task_alloc_p)
+        return sim_state, sim_task_alloc_p
 
     def get_actions(self, state_repr):
         """Returns list of possible actions from current state."""
@@ -177,16 +185,16 @@ class E2E_BRTDP:
         """runSampleTrial from BRTDP paper."""
         start_time = time.time()
         x = self.start
-        x_task_alloc_dist = self.start_task_alloc_dist
+        x_task_alloc_p = self.start_task_alloc_p
         traj = nav_utils.Stack()
 
         # Terminating if this takes too long e.g. path is infeasible.
         counter = 0
         start_repr = self.start.get_repr()
-        start_task_alloc_dist_tuple = self.start_task_alloc_dist.to_tuple()
+        start_task_alloc_p = self.start_task_alloc_p
         diff = (
-            self.v_u[((start_repr, start_task_alloc_dist_tuple), self.subtask)]
-            - self.v_l[((start_repr, start_task_alloc_dist_tuple), self.subtask)]
+            self.v_u[((start_repr, start_task_alloc_p), self.subtask)]
+            - self.v_l[((start_repr, start_task_alloc_p), self.subtask)]
         )
         print("DIFF AT START: {}".format(diff))
 
@@ -194,18 +202,17 @@ class E2E_BRTDP:
             counter += 1
             if counter > self.cap:
                 break
-            traj.push((x, x_task_alloc_dist))
+            traj.push((x, x_task_alloc_p))
 
             # Get repr of current environment state.
             x_repr = x.get_repr()
-            x_task_alloc_dist_tuple = x_task_alloc_dist.to_tuple()
 
             # Get the planner state. If Planner Level is 1, then
             # modified_state will include the most likely actions of the
             # other agents. Otherwise, the modified_state will be the same
             # as state `x`.
-            modified_state, modified_task_alloc_dist, other_agent_actions = (
-                self._get_modified_state_with_other_agent_actions(x, x_task_alloc_dist)
+            modified_state, modified_task_alloc_p, other_agent_actions = (
+                self._get_modified_state_with_other_agent_actions(x, x_task_alloc_p)
             )
             modified_state_repr = modified_state.get_repr()
 
@@ -217,20 +224,22 @@ class E2E_BRTDP:
                 [
                     self.Q(
                         state=modified_state,
-                        task_alloc_dist=modified_task_alloc_dist,
+                        task_alloc_p=modified_task_alloc_p,
                         action=a,
                         value_f=self.v_u,
                     )
                     for a in actions
                 ]
             )
-            self.v_u[(modified_state_repr, self.subtask)] = new_upper
+            self.v_u[((modified_state_repr, modified_task_alloc_p), self.subtask)] = (
+                new_upper
+            )
 
             action_index = argmin(
                 [
                     self.Q(
                         state=modified_state,
-                        task_alloc_dist=modified_task_alloc_dist,
+                        task_alloc_p=modified_task_alloc_p,
                         action=a,
                         value_f=self.v_l,
                     )
@@ -241,24 +250,26 @@ class E2E_BRTDP:
 
             new_lower = self.Q(
                 state=modified_state,
-                task_alloc_dist=modified_task_alloc_dist,
+                task_alloc_p=modified_task_alloc_p,
                 action=a,
                 value_f=self.v_l,
             )
-            self.v_l[(modified_state_repr, self.subtask)] = new_lower
+            self.v_l[((modified_state_repr, modified_task_alloc_p), self.subtask)] = (
+                new_lower
+            )
 
-            b = self.get_expected_diff(modified_state, modified_task_alloc_dist, a)
+            b = self.get_expected_diff(modified_state, modified_task_alloc_p, a)
             B = sum(b.values())
             diff = (
                 self.v_u[
                     (
-                        (start_repr, start_task_alloc_dist_tuple),
+                        (start_repr, start_task_alloc_p),
                         self.subtask,
                     )
                 ]
                 - self.v_l[
                     (
-                        (start_repr, start_task_alloc_dist_tuple),
+                        (start_repr, start_task_alloc_p),
                         self.subtask,
                     )
                 ]
@@ -267,41 +278,33 @@ class E2E_BRTDP:
                 break
 
             x = self.repr_to_env_dict[list(b.keys())[0]]
-            x_task_alloc_dist = x_task_alloc_dist  # Doesn't change
 
             # Track this new state in repr dict and value function
             # if it's new.
-            self.repr_init(env_state=x, task_alloc_dist=x_task_alloc_dist)
-            self.value_init(env_state=x, task_alloc_dist=x_task_alloc_dist)
+            self.repr_init(env_state=x)
+            self.value_init(env_state=x, task_alloc_p=x_task_alloc_p)
         print(
             "RUN SAMPLE EXPLORED {} STATES, took {}".format(
                 len(traj), time.time() - start_time
             )
         )
         while not (traj.empty()):
-            x, x_task_alloc_dist = traj.pop()
+            x, x_task_alloc_p = traj.pop()
             x_repr = x.get_repr()
-            x_task_alloc_dist_tuple = x_task_alloc_dist.to_tuple()
             actions = self.get_actions(state_repr=x_repr)
-            self.v_u[(x_repr, self.subtask)] = min(
+            self.v_u[((x_repr, x_task_alloc_p), self.subtask)] = min(
                 [
                     self.Q(
-                        state=x,
-                        task_alloc_dist=x_task_alloc_dist,
-                        action=a,
-                        value_f=self.v_u,
+                        state=x, task_alloc_p=x_task_alloc_p, action=a, value_f=self.v_u
                     )
                     for a in actions
                 ]
             )
 
-            self.v_l[(x_repr, self.subtask)] = min(
+            self.v_l[((x_repr, x_task_alloc_p), self.subtask)] = min(
                 [
                     self.Q(
-                        state=x,
-                        task_alloc_dist=x_task_alloc_dist,
-                        action=a,
-                        value_f=self.v_l,
+                        state=x, task_alloc_p=x_task_alloc_p, action=a, value_f=self.v_l
                     )
                     for a in actions
                 ]
@@ -311,18 +314,18 @@ class E2E_BRTDP:
         """Main loop function for BRTDP."""
         main_counter = 0
         start_repr = self.start.get_repr()
-        start_task_alloc_tuple = self.start_task_alloc_dist.to_tuple()
+        start_task_alloc_p = self.start_task_alloc_p
 
-        upper = self.v_u[((start_repr, start_task_alloc_tuple), self.subtask)]
-        lower = self.v_l[((start_repr, start_task_alloc_tuple), self.subtask)]
+        upper = self.v_u[((start_repr, start_task_alloc_p), self.subtask)]
+        lower = self.v_l[((start_repr, start_task_alloc_p), self.subtask)]
         diff = upper - lower
 
         # Run until convergence or until you max out on iteration
         while (diff > self.alpha) and (main_counter < self.main_cap):
             print("\nstarting main loop #", main_counter)
 
-            new_upper = self.v_u[((start_repr, start_task_alloc_tuple), self.subtask)]
-            new_lower = self.v_l[((start_repr, start_task_alloc_tuple), self.subtask)]
+            new_upper = self.v_u[((start_repr, start_task_alloc_p), self.subtask)]
+            new_lower = self.v_l[((start_repr, start_task_alloc_p), self.subtask)]
             new_diff = new_upper - new_lower
             if new_diff > diff + 0.01:
                 self.start.update_display()
@@ -488,7 +491,7 @@ class E2E_BRTDP:
     def set_settings(
         self,
         env,
-        task_alloc_dist,
+        task_alloc_p,
         subtask,
         subtask_agent_names,
         other_agent_planners={},
@@ -519,10 +522,10 @@ class E2E_BRTDP:
         self.num_explorations = 0
 
         # Set start state.
+        self.start_task_alloc_p = task_alloc_p
         self.start = copy.copy(env)
-        self.start_task_alloc_dist = copy.copy(task_alloc_dist)
-        self.repr_init(env_state=env, task_alloc_dist=task_alloc_dist)
-        self.value_init(env_state=env, task_alloc_dist=task_alloc_dist)
+        self.repr_init(env_state=env)
+        self.value_init(env_state=env, task_alloc_p=task_alloc_p)
 
     def get_subtask_agents(self, env_state):
         """Return subtask agent for this planner given state."""
@@ -538,33 +541,33 @@ class E2E_BRTDP:
 
         return subtask_agents
 
-    def repr_init(self, env_state, task_alloc_dist):
+    def repr_init(self, env_state):
         """Initialize repr for environment state."""
         es_repr = env_state.get_repr()
-        task_alloc_dist_tuple = task_alloc_dist.to_tuple()
         if es_repr not in self.repr_to_env_dict:
             self.repr_to_env_dict[es_repr] = copy.copy(env_state)
-        return es_repr, task_alloc_dist_tuple
+        return es_repr
 
-    def value_init(self, env_state, task_alloc_dist):
+    def value_init(self, env_state, task_alloc_p):
         """Initialize value for environment state."""
         # Skip if already initialized.
         es_repr = env_state.get_repr()
-        task_alloc_dist_tuple = task_alloc_dist.to_tuple()
-        if ((es_repr, task_alloc_dist_tuple), self.subtask) in self.v_l and (
-            (es_repr, task_alloc_dist_tuple),
+        if ((es_repr, task_alloc_p), self.subtask) in self.v_l and (
+            (es_repr, task_alloc_p),
             self.subtask,
         ) in self.v_u:
             return
 
         # Goal state has value 0.
         if self.is_goal_state(es_repr):
-            self.v_l[((es_repr, task_alloc_dist_tuple), self.subtask)] = 0.0
-            self.v_u[((es_repr, task_alloc_dist_tuple), self.subtask)] = 0.0
+            self.v_l[((es_repr, task_alloc_p), self.subtask)] = 0.0
+            self.v_u[((es_repr, task_alloc_p), self.subtask)] = 0.0
             return
 
         # Determine lower bound on this environment state.
-        lower = env_state.get_lower_bound_for_subtask_given_objs(
+        if task_alloc_p == 0:
+            raise Exception("task_alloc_p is 0!")
+        lower = (1 / task_alloc_p) * env_state.get_lower_bound_for_subtask_given_objs(
             subtask=self.subtask,
             subtask_agent_names=self.subtask_agent_names,
             start_obj=self.start_obj,
@@ -572,7 +575,6 @@ class E2E_BRTDP:
             subtask_action_obj=self.subtask_action_obj,
         )
 
-        subtask_agents = self.get_subtask_agents(env_state=env_state)
         lower = lower * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
@@ -580,86 +582,33 @@ class E2E_BRTDP:
             lower, env_state.display(), env_state.print_agents()
         )
 
-        self.v_l[((es_repr, task_alloc_dist_tuple), self.subtask)] = lower - 1.09
-        self.v_u[((es_repr, task_alloc_dist_tuple), self.subtask)] = (
+        self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower - 1.09
+        self.v_u[((es_repr, task_alloc_p), self.subtask)] = (
             lower * 5 * (self.time_cost + self.action_cost)
         )
 
-    def Q(
-        self,
-        state,
-        task_alloc_dist,
-        action,
-        value_f,
-    ):
+    def Q(self, state, task_alloc_p, action, value_f):
         """Get Q value using value_f of (state, action)."""
         # Q(s,a) = c(x,a) + \sum_{y \in S} P(x, a, y) * v(y)
         cost = self.cost(state, action)
 
         # Initialize state if it's new.
-        s_repr, task_alloc_dist_tuple = self.repr_init(
-            env_state=state, task_alloc_dist=task_alloc_dist
-        )
-        self.value_init(env_state=state, task_alloc_dist=task_alloc_dist)
+        s_repr = self.repr_init(env_state=state)
+        self.value_init(env_state=state, task_alloc_p=task_alloc_p)
 
         # Get next state.
-        next_state, next_task_alloc_dist = self.T(
-            state=state, task_alloc_dist=task_alloc_dist, action=action
+        next_state, next_task_alloc_p = self.T(
+            state_repr=s_repr, task_alloc_p=task_alloc_p, action=action
         )
 
         # Initialize new state if it's new.
-        ns_repr, ns_task_alloc_dist_tuple = self.repr_init(
-            env_state=next_state, task_alloc_dist=next_task_alloc_dist
-        )
-        self.value_init(env_state=next_state, task_alloc_dist=next_task_alloc_dist)
+        self.repr_init(env_state=next_state)
+        self.value_init(env_state=next_state, task_alloc_p=next_task_alloc_p)
 
         expected_value = (
-            1.0 * value_f[((ns_repr, ns_task_alloc_dist_tuple), self.subtask)]
+            1.0 * value_f[((next_state.get_repr(), next_task_alloc_p), self.subtask)]
         )
         return float(cost + expected_value)
-
-    def V(self, state, task_alloc_dist, _type):
-        """Get V*(x) = min_{a \in A} Q_{v*}(x, a)."""
-
-        # Initialize state if it's new.
-        s_repr, task_alloc_dist_tuple = self.repr_init(
-            env_state=state, task_alloc_dist=task_alloc_dist
-        )
-
-        # Check if this is the desired goal state.
-        if self.is_goal_state(s_repr):
-            return 0
-
-        # Use lower bound on value function.
-        if _type == "lower":
-            return min(
-                [
-                    self.Q(
-                        state=state,
-                        task_alloc_dist=task_alloc_dist,
-                        action=action,
-                        value_f=self.v_l,
-                    )
-                    for action in self.get_actions(state_repr=s_repr)
-                ]
-            )
-        # Use upper bound on value function.
-        elif _type == "upper":
-            return min(
-                [
-                    self.Q(
-                        state=state,
-                        task_alloc_dist=task_alloc_dist,
-                        action=action,
-                        value_f=self.v_u,
-                    )
-                    for action in self.get_actions(state_repr=s_repr)
-                ]
-            )
-        else:
-            raise ValueError(
-                "Don't recognize the value state function type: {}".format(_type)
-            )
 
     def cost(self, state, action):
         """Return cost of taking action in this state."""
@@ -667,31 +616,28 @@ class E2E_BRTDP:
         if isinstance(action[0], int):
             action = tuple([action])
         for a in action:
-            if a != (0, 0) and a != (-1, -1):
+            if a != (0, 0) and a != nav_utils.COMM_ACTION:
                 cost += self.action_cost
-            if a == (-1, -1):
+            if a == nav_utils.COMM_ACTION:
                 cost += self.comm_cost
         return cost
 
-    def get_expected_diff(self, start_state, task_alloc_dist, action):
+    def get_expected_diff(self, start_state, task_alloc_p, action):
         # Get next state.
-        s_, t_ = self.T(
-            state=start_state, task_alloc_dist=task_alloc_dist, action=action
+        s_, t_alloc_ = self.T(
+            state_repr=start_state.get_repr(), task_alloc_p=task_alloc_p, action=action
         )
 
         # Initialize state if it's new.
-        s_repr, t_tuple = self.repr_init(env_state=s_, task_alloc_dist=t_)
-        self.value_init(
-            env_state=s_,
-            task_alloc_dist=t_,
-        )
+        s_repr = self.repr_init(env_state=s_)
+        self.value_init(env_state=s_, task_alloc_p=t_alloc_)
 
         # Get expected diff.
         b = {
             s_repr: 1.0
             * (
-                self.v_u[((s_repr, t_tuple), self.subtask)]
-                - self.v_l[((s_repr, t_tuple), self.subtask)]
+                self.v_u[((s_repr, t_alloc_), self.subtask)]
+                - self.v_l[((s_repr, t_alloc_), self.subtask)]
             )
         }
         return b
@@ -702,7 +648,7 @@ class E2E_BRTDP:
                 del self.v_l[(state, action)]
                 del self.v_u[(state, action)]
 
-    def _get_modified_state_with_other_agent_actions(self, state, task_alloc_dist):
+    def _get_modified_state_with_other_agent_actions(self, state, task_alloc_p):
         """Do nothing if the planner level is level 0.
 
         Otherwise, using self.other_agent_planners, anticipate what other agents will do
@@ -712,11 +658,12 @@ class E2E_BRTDP:
         the change.
         """
         modified_state = copy.copy(state)
+        modified_task_alloc_p = task_alloc_p
         other_agent_actions = {}
 
         # Do nothing if the planner level is 0.
         if self.planner_level == PlannerLevel.LEVEL0:
-            return modified_state, other_agent_actions
+            return modified_state, modified_task_alloc_p, other_agent_actions
 
         # Otherwise, modify the state because Level 1 planners
         # consider the actions of other agents.
@@ -726,7 +673,7 @@ class E2E_BRTDP:
             # These new planners should be level 0 planners.
             other_planner.set_settings(
                 env=copy.copy(state),
-                task_alloc_dist=copy.copy(task_alloc_dist),
+                task_alloc_p=task_alloc_p,
                 subtask=other_planner.subtask,
                 subtask_agent_names=other_planner.subtask_agent_names,
             )
@@ -742,7 +689,7 @@ class E2E_BRTDP:
                     [
                         other_planner.Q(
                             state=other_planner.start,
-                            task_alloc_dist=other_planner.start_task_alloc_dist,
+                            task_alloc_p=other_planner.start_task_alloc_p,
                             action=action,
                             value_f=other_planner.v_l,
                         )
@@ -764,14 +711,14 @@ class E2E_BRTDP:
             other_agent.action = greedy_action
 
         # Initialize state if it's new.
-        self.repr_init(env_state=modified_state, task_alloc_dist=task_alloc_dist)
-        self.value_init(env_state=modified_state, task_alloc_dist=task_alloc_dist)
-        return modified_state, task_alloc_dist, other_agent_actions
+        self.repr_init(env_state=modified_state)
+        self.value_init(env_state=modified_state, task_alloc_p=modified_task_alloc_p)
+        return modified_state, modified_task_alloc_p, other_agent_actions
 
     def get_next_action(
         self,
         env,
-        task_alloc_dist,
+        task_alloc_p,
         subtask,
         subtask_agent_names,
         other_agent_planners,
@@ -784,16 +731,16 @@ class E2E_BRTDP:
         # Configure planner settings.
         self.set_settings(
             env=env,
-            task_alloc_dist=task_alloc_dist,
+            task_alloc_p=task_alloc_p,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_agent_planners,
         )
 
         # Modify the state with other_agent_planners (Level 1 Planning).
-        cur_state, cur_task_alloc_dist, other_agent_actions = (
+        cur_state, cur_task_alloc_p, other_agent_actions = (
             self._get_modified_state_with_other_agent_actions(
-                state=self.start, task_alloc_dist=self.start_task_alloc_dist
+                state=self.start, task_alloc_p=self.start_task_alloc_p
             )
         )
 
@@ -803,7 +750,7 @@ class E2E_BRTDP:
             [
                 self.Q(
                     state=cur_state,
-                    task_alloc_dist=cur_task_alloc_dist,
+                    task_alloc_p=cur_task_alloc_p,
                     action=a,
                     value_f=self.v_l,
                 )
@@ -811,17 +758,14 @@ class E2E_BRTDP:
             ]
         )
         a = actions[action_index]
-        B = sum(self.get_expected_diff(cur_state, cur_task_alloc_dist, a).values())
+        B = sum(self.get_expected_diff(cur_state, cur_task_alloc_p, a).values())
 
         diff = (
-            self.v_u[
-                ((cur_state.get_repr(), cur_task_alloc_dist.to_tuple()), self.subtask)
-            ]
-            - self.v_l[
-                ((cur_state.get_repr(), cur_task_alloc_dist.to_tuple()), self.subtask)
-            ]
+            self.v_u[((cur_state.get_repr(), cur_task_alloc_p), self.subtask)]
+            - self.v_l[((cur_state.get_repr(), cur_task_alloc_p), self.subtask)]
         ) / self.tau
         self.cur_state = cur_state
+        self.cur_task_alloc_p = cur_task_alloc_p
         if B > diff:
             print("exploring, B: {}, diff: {}".format(B, diff))
             self.main()
@@ -835,7 +779,7 @@ class E2E_BRTDP:
             qvals = [
                 self.Q(
                     state=cur_state,
-                    task_alloc_dist=cur_task_alloc_dist,
+                    task_alloc_p=cur_task_alloc_p,
                     action=a,
                     value_f=self.v_l,
                 )
@@ -847,7 +791,7 @@ class E2E_BRTDP:
                 "upper is",
                 self.v_u[
                     (
-                        (cur_state.get_repr(), cur_task_alloc_dist.to_tuple()),
+                        (cur_state.get_repr(), cur_task_alloc_p),
                         self.subtask,
                     )
                 ],
@@ -856,7 +800,7 @@ class E2E_BRTDP:
                 "lower is",
                 self.v_l[
                     (
-                        (cur_state.get_repr(), cur_task_alloc_dist.to_tuple()),
+                        (cur_state.get_repr(), cur_task_alloc_p),
                         self.subtask,
                     )
                 ],

@@ -1,3 +1,4 @@
+import navigation_planner.utils as nav_utils
 import numpy as np
 from utils.core import *
 
@@ -9,7 +10,7 @@ def interact(agent, world):
     """
 
     # agent does nothing (i.e. no arrow key)
-    if agent.action == (0, 0) or agent.action == (-1, -1):
+    if agent.action == (0, 0) or agent.action == nav_utils.COMM_ACTION:
         return
 
     action_x, action_y = world.inbounds(

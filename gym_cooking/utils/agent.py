@@ -63,6 +63,7 @@ class RealAgent:
             tau=arglist.tau,
             cap=arglist.cap,
             main_cap=arglist.main_cap,
+            epsilon=arglist.epsilon,
             can_communicate=arglist.comm,
         )
 
@@ -113,14 +114,15 @@ class RealAgent:
         )
         self.plan(copy.copy(obs))
 
-        self.task_alloc_dist_tm1 = copy.copy(self.delegator.probs)
+        self.task_alloc_p_tm1 = self.delegator.probs.get(self.delegator.probs.get_max())
+
         comm = None
         if self.action == nav_utils.COMM_ACTION:
             comm = self.generate_communication(obs)
         return self.action, comm
 
     def generate_communication(self, obs):
-        return self.comm_func.speak(self.name, obs, self.delegator.probs)
+        return self.comm_func.speak(self.name, obs, self.delegator.probs.get_max())
 
     def get_subtasks(self, world) -> Dict:
         """Return different subtask permutations for active orders."""
@@ -288,7 +290,7 @@ class RealAgent:
 
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
-                    task_alloc_dist_tm1=self.task_alloc_dist_tm1,
+                    task_alloc_p_tm1=self.task_alloc_p_tm1,
                     actions_tm1=env.agent_actions,
                     comm_info=comm_info,
                     beta=self.beta,
@@ -343,7 +345,6 @@ class RealAgent:
                 )
                 other_agent_planners = self.delegator.get_other_agent_planners(
                     obs=copy.copy(env),
-                    task_alloc_dist=copy.copy(self.delegator.probs),
                     backup_subtask=backup_subtask,
                 )
 
@@ -353,9 +354,10 @@ class RealAgent:
                 )
             )
 
+            new_subtask_p = self.delegator.probs.get(self.delegator.probs.get_max())
             action = self.planner.get_next_action(
                 env=env,
-                task_alloc_dist=self.delegator.probs,
+                task_alloc_p=new_subtask_p,
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
                 other_agent_planners=other_agent_planners,

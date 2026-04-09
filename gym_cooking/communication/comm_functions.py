@@ -35,8 +35,7 @@ class CommunicationFunctions:
         if self.LISTEN_PROMPT_PATH.exists():
             self.listen_prompt_template = self.LISTEN_PROMPT_PATH.read_text()
 
-    def speak(self, name, obs, task_alloc_dist):
-        task_allocation = task_alloc_dist.get_max()
+    def speak(self, name, obs, task_allocation):
         if self.speak_prompt_template is None:
             raise FileNotFoundError(
                 f"Prompt file not found at {self.SPEAK_PROMPT_PATH}"
@@ -54,7 +53,9 @@ class CommunicationFunctions:
 
     def listen(self, name, obs, task_alloc_dist):
         messages = {k: v for k, v in obs.comms.items() if k != name}
-        task_allocs = [t for t in task_alloc_dist.keys if task_alloc_dist.get(t) != 0]
+        task_allocs = [
+            t for t in task_alloc_dist.probs.keys() if task_alloc_dist.get(t) != 0
+        ]
 
         comm_info = {}
 
