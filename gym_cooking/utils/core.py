@@ -54,7 +54,9 @@ class GridSquare:
         return gs
 
     def acquire(self, obj):
-        if not self.is_dispenser:
+        # Can acquire an object if the agent places on a non-dispenser
+        # or refilling a dispenser (update_order_queue in overcooked_environment.py)
+        if not self.is_dispenser or (self.cnt is not None and self.cnt == 0):
             obj.location = self.location
             self.holding = obj
 
