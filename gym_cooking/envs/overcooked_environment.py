@@ -268,6 +268,7 @@ class OvercookedEnvironment(gym.Env):
         # Visualize.
         self.display()
         self.print_agents()
+        print(self.comms)
         if self.arglist.record:
             self.game.save_image_obs(self.t)
 

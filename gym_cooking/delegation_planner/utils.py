@@ -10,10 +10,8 @@ from utils.utils import agent_settings
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
 
-    def __init__(self, subtask_allocs, epsilon):
+    def __init__(self, subtask_allocs):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
-
-        self.epsilon = epsilon
 
         self.probs = {}
         if len(subtask_allocs) == 0:
@@ -38,7 +36,6 @@ class SubtaskAllocDistribution:
     def __copy__(self):
         new = self.__class__.__new__(self.__class__)
         new.probs = copy.deepcopy(self.probs)
-        new.epsilon = self.epsilon
         return new
 
     def enumerate_subtask_allocs(self):
@@ -51,15 +48,19 @@ class SubtaskAllocDistribution:
         return self.probs[tuple(subtask_alloc)]
 
     def get_max(self):
-        if len(self.probs) > 0:
-            max_prob = max(self.probs.values())
-            max_subtask_allocs = [
-                subtask_alloc
-                for subtask_alloc, p in self.probs.items()
-                if p == max_prob
-            ]
-            return random.choice(max_subtask_allocs)
-        return None
+        try:
+            if len(self.probs) > 0:
+                max_prob = max(self.probs.values())
+                max_subtask_allocs = [
+                    subtask_alloc
+                    for subtask_alloc, p in self.probs.items()
+                    if p == max_prob
+                ]
+                return random.choice(max_subtask_allocs)
+            return None
+        except Exception as e:
+            print(e)
+            breakpoint()
 
     def get_max_bucketed(self):
         subtasks = []
@@ -92,6 +93,9 @@ class SubtaskAllocDistribution:
 
     def update(self, subtask_alloc, factor):
         self.probs[tuple(subtask_alloc)] *= factor
+
+        if np.isnan(self.probs[tuple(subtask_alloc)]):
+            breakpoint()
 
     def delete(self, subtask_alloc):
         del self.probs[tuple(subtask_alloc)]

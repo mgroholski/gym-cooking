@@ -28,7 +28,7 @@ class BayesianDelegator(Delegator):
         planner,
         none_action_prob,
         epsilon,
-        gamma,
+        comm_funcs,
         can_communicate,
     ):
         """Initializing Bayesian Delegator for agent_name.
@@ -52,7 +52,7 @@ class BayesianDelegator(Delegator):
         self.none_action_prob = none_action_prob
         self.can_communicate = can_communicate
         self.epsilon = epsilon
-        self.gamma = gamma
+        self.comm_funcs = comm_funcs
 
     def should_reset_priors(self, obs, incomplete_subtasks):
         """Returns whether priors should be reset.
@@ -530,7 +530,7 @@ class BayesianDelegator(Delegator):
                             remaining_subtasks=remaining_subtasks,
                             base_subtask_alloc=subtask_alloc,
                         )
-        return SubtaskAllocDistribution(subtask_allocs, self.epsilon)
+        return SubtaskAllocDistribution(subtask_allocs)
 
     def add_greedy_subtasks(self):
         """Return the entire distribution of greedy subtask allocations.
@@ -551,7 +551,7 @@ class BayesianDelegator(Delegator):
                 )
             ]
             subtask_allocs.append(subtask_alloc)
-        return SubtaskAllocDistribution(subtask_allocs, self.epsilon)
+        return SubtaskAllocDistribution(subtask_allocs)
 
     def add_dc_subtasks(self):
         """Return the entire distribution of divide & conquer subtask allocations.
@@ -571,11 +571,12 @@ class BayesianDelegator(Delegator):
                 for i in range(len(self.all_agent_names))
             ]
             subtask_allocs.append(subtask_alloc)
-        return SubtaskAllocDistribution(subtask_allocs, self.epsilon)
+        return SubtaskAllocDistribution(subtask_allocs)
 
     def select_subtask(self, agent_name):
         """Return subtask and subtask_agent_names for agent with agent_name
         with max. probability."""
+
         max_subtask_alloc = self.probs.get_max()
         if max_subtask_alloc is not None:
             for t in max_subtask_alloc:
@@ -594,9 +595,9 @@ class BayesianDelegator(Delegator):
                         )
                     ]
                 ]
-                self.probs = SubtaskAllocDistribution(subtask_allocs, self.epsilon)
+                self.probs = SubtaskAllocDistribution(subtask_allocs)
 
-    def bayes_update(self, obs_tm1, task_alloc_p_tm1, actions_tm1, comm_info, beta):
+    def bayes_update(self, obs_tm1, actions_tm1, comm_info, beta):
         """Apply Bayesian update based on previous observation (obs_tms1)
         and most recent actions taken (actions_tm1). Beta is used to determine
         how rational agents act."""
@@ -616,40 +617,57 @@ class BayesianDelegator(Delegator):
         if self.model_type == "fb":
             return
 
-        for subtask_alloc in self.probs.enumerate_subtask_allocs():
+        probs_tm1 = copy.copy(self.probs)
+        ta_set = self.probs.enumerate_subtask_allocs()
+
+        if comm_info is not None:
+            epsilon_per_comm = self.epsilon / float(len(comm_info))
+            speaking_agents = set([k for k in comm_info.keys()])
+
+        for task_alloc in ta_set:
             update = 0.0
-            for t in subtask_alloc:
-                if self.model_type == "greedy":
-                    # Only calculate updates for yourself.
-                    if self.agent_name in t.subtask_agent_names:
-                        update += self.prob_nav_actions(
-                            obs_tm1=copy.copy(obs_tm1),
-                            task_alloc_p_tm1=task_alloc_p_tm1,
-                            actions_tm1=actions_tm1,
-                            subtask=t.subtask,
-                            subtask_agent_names=t.subtask_agent_names,
-                            beta=beta,
-                            no_level_1=False,
-                        )
-                else:
+            task_alloc_p_tm1 = probs_tm1.get(task_alloc)
+            for t in task_alloc:
+                for subtask_agent_name in t.subtask_agent_names:
+                    agent_subtask_alloc_tm1 = task_alloc_p_tm1
+                    if comm_info is not None:
+                        for agent_name in speaking_agents.difference(
+                            [subtask_agent_name]
+                        ):
+                            task_alloc_z, c, _ = comm_info[agent_name]
+                            if task_alloc_z == task_alloc:
+                                agent_subtask_alloc_tm1 = min(
+                                    1.0,
+                                    agent_subtask_alloc_tm1 + (epsilon_per_comm * c),
+                                )
+                            else:
+                                agent_subtask_alloc_tm1 = max(
+                                    0.0,
+                                    agent_subtask_alloc_tm1
+                                    - ((c * epsilon_per_comm) / (len(ta_set) - 1)),
+                                )
+
                     p = self.prob_nav_actions(
                         obs_tm1=copy.copy(obs_tm1),
-                        task_alloc_p_tm1=task_alloc_p_tm1,
+                        task_alloc_p_tm1=agent_subtask_alloc_tm1,
                         actions_tm1=actions_tm1,
                         subtask=t.subtask,
                         subtask_agent_names=t.subtask_agent_names,
                         beta=beta,
                         no_level_1=False,
-                    )
-                    update += len(t.subtask_agent_names) * p
+                    )  # P(a | s, z, ta)
+                    update += np.log(p)
 
-            if comm_info is not None:
-                subtask_alloc_tuple = tuple(subtask_alloc)
-                if subtask_alloc_tuple in comm_info:
-                    update += np.log(self.gamma) + np.log(
-                        comm_info[subtask_alloc_tuple]
-                    )
+                    if comm_info is not None and subtask_agent_name in speaking_agents:
+                        _, _, comm = comm_info[subtask_agent_name]
+                        logit_p = self.comm_funcs.get_logits(
+                            subtask_agent_name, comm, task_alloc
+                        )
 
-            self.probs.update(subtask_alloc=subtask_alloc, factor=update)
-            print("UPDATING: subtask_alloc {} by {}".format(subtask_alloc, update))
+                        update += logit_p
+            update = np.exp(update)
+            if update < 0.0:
+                breakpoint()
+            self.probs.update(subtask_alloc=task_alloc, factor=update)
+            print("UPDATING: subtask_alloc {} by {}".format(task_alloc, update))
         self.probs.normalize()

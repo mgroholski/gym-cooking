@@ -175,8 +175,8 @@ class RealAgent:
             planner=self.planner,
             none_action_prob=self.none_action_prob,
             epsilon=self.arglist.epsilon,
-            gamma=self.arglist.gamma,
             can_communicate=self.arglist.comm,
+            comm_funcs=self.comm_func,
         )
 
     def reset_subtasks(self):
@@ -293,7 +293,6 @@ class RealAgent:
 
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
-                    task_alloc_p_tm1=self.task_alloc_p_tm1,
                     actions_tm1=env.agent_actions,
                     comm_info=comm_info,
                     beta=self.beta,
@@ -509,7 +508,9 @@ class SimAgent:
 
     def get_repr(self):
         return AgentRepr(
-            name=self.name, location=self.location, holding=self.get_holding()
+            name=self.name,
+            location=self.location,
+            holding=self.get_holding(),
         )
 
     def get_holding(self):

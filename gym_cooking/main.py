@@ -69,15 +69,8 @@ def parse_arguments():
     parser.add_argument(
         "--epsilon",
         type=float,
-        default=1.3,
+        default=0.1,
         help="The factor that the task allocation is believed to increase by.",
-    )
-
-    parser.add_argument(
-        "--gamma",
-        type=float,
-        default=1.0,
-        help="The trust factor of the LLM's listening ability.",
     )
 
     # Delegation Planner

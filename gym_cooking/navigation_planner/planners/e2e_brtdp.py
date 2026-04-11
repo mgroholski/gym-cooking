@@ -82,7 +82,8 @@ class E2E_BRTDP:
         # Setting up costs for value function.
         self.time_cost = 1.0
         self.action_cost = 0.1
-        self.comm_cost = 0.075
+        self.comm_cost = 0.05
+        self.cons_comm_cost = 2.0
 
     def __copy__(self):
         copy_ = E2E_BRTDP(
@@ -105,7 +106,7 @@ class E2E_BRTDP:
         sim_task_alloc_p = task_alloc_p
 
         if action == nav_utils.COMM_ACTION:
-            sim_task_alloc_p *= self.epsilon
+            sim_task_alloc_p = min(1.0, sim_task_alloc_p + self.epsilon)
 
         sim_task_alloc_p = min(1.0, sim_task_alloc_p)
 
@@ -569,18 +570,23 @@ class E2E_BRTDP:
 
         # Determine lower bound on this environment state.
         if task_alloc_p == 0:
-            raise Exception("task_alloc_p is 0!")
-        lower = (1 / task_alloc_p) * env_state.get_lower_bound_for_subtask_given_objs(
-            subtask=self.subtask,
-            subtask_agent_names=self.subtask_agent_names,
-            start_obj=self.start_obj,
-            goal_obj=self.goal_obj,
-            subtask_action_obj=self.subtask_action_obj,
-        )
+            lower = env_state.world.perimeter + 1  # Our max distance
+        else:
+            lower = (
+                1 / task_alloc_p
+            ) * env_state.get_lower_bound_for_subtask_given_objs(
+                subtask=self.subtask,
+                subtask_agent_names=self.subtask_agent_names,
+                start_obj=self.start_obj,
+                goal_obj=self.goal_obj,
+                subtask_action_obj=self.subtask_action_obj,
+            )
 
         lower = lower * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
+        if lower <= 0:
+            breakpoint()
         assert lower > 0, "lower: {}, {}, {}".format(
             lower, env_state.display(), env_state.print_agents()
         )
@@ -623,6 +629,7 @@ class E2E_BRTDP:
                 cost += self.action_cost
             if a == nav_utils.COMM_ACTION:
                 cost += self.comm_cost
+
         return cost
 
     def get_expected_diff(self, start_state, task_alloc_p, action):
