@@ -218,7 +218,8 @@ class BayesianDelegator(Delegator):
 
             # Weight by number of nonzero subtasks.
             some_probs.update(
-                subtask_alloc=subtask_alloc, factor=len(t) ** 2.0 * total_weight
+                subtask_alloc=subtask_alloc,
+                factor=np.log(len(t) ** 2.0 * total_weight),
             )
         return some_probs
 
@@ -659,9 +660,6 @@ class BayesianDelegator(Delegator):
                     if p != 0:
                         update += np.log(p)
 
-                    if np.isnan(update):
-                        breakpoint()
-
                     if comm_info is not None and subtask_agent_name in speaking_agents:
                         _, _, comm = comm_info[subtask_agent_name]
                         logit_p = self.comm_funcs.get_logits(
@@ -669,9 +667,6 @@ class BayesianDelegator(Delegator):
                         )
 
                         update += logit_p
-            update = np.exp(update)
-            if update < 0.0:
-                breakpoint()
             self.probs.update(subtask_alloc=task_alloc, factor=update)
             print("UPDATING: subtask_alloc {} by {}".format(task_alloc, update))
         self.probs.normalize()

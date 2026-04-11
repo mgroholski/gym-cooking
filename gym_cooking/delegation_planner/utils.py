@@ -17,7 +17,7 @@ class SubtaskAllocDistribution:
         if len(subtask_allocs) == 0:
             return
 
-        prior = 1.0 / (len(subtask_allocs))
+        prior = np.log(1.0 / (len(subtask_allocs)))
         print("set prior", prior)
 
         for subtask_alloc in subtask_allocs:
@@ -45,7 +45,7 @@ class SubtaskAllocDistribution:
         return list(self.probs.items())
 
     def get(self, subtask_alloc):
-        return self.probs[tuple(subtask_alloc)]
+        return np.exp(self.probs[tuple(subtask_alloc)])
 
     def get_max(self):
         try:
@@ -92,16 +92,18 @@ class SubtaskAllocDistribution:
         self.probs[tuple(subtask_alloc)] = value
 
     def update(self, subtask_alloc, factor):
-        self.probs[tuple(subtask_alloc)] *= factor
+        self.probs[tuple(subtask_alloc)] += factor
 
     def delete(self, subtask_alloc):
         del self.probs[tuple(subtask_alloc)]
 
     def normalize(self):
-        total = sum(self.probs.values())
+        if len(self.probs) == 0:
+            return self.probs
+
+        log_probs = list(self.probs.values())
+        log_total = sp.special.logsumexp(log_probs)
+
         for subtask_alloc in self.probs.keys():
-            if total == 0:
-                self.probs[subtask_alloc] = 1.0 / len(self.probs)
-            else:
-                self.probs[subtask_alloc] *= 1.0 / total
+            self.probs[subtask_alloc] = self.probs[subtask_alloc] - log_total
         return self.probs

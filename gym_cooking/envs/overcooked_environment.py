@@ -636,7 +636,8 @@ class OvercookedEnvironment(gym.Env):
         if self.arglist.partially_observable:
             new_order_prob = self.arglist.r
             if len(self.hidden_task_queue) and (
-                (not len(self.task_queue)) or (np.random.random() < new_order_prob)
+                (any([(not o.is_complete) for o in self.task_queue]))
+                or (np.random.random() < new_order_prob)
             ):
                 self.add_order_to_queue()
                 plate_gs = self.world.get_gridsquare_at(self.world.plate_disp_loc)

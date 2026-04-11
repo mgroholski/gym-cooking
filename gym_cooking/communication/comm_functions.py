@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import tiktoken
 from openai import OpenAI
 
 
@@ -35,10 +36,6 @@ class CommunicationFunctions:
         self.listen_prompt_template = None
         if self.LISTEN_PROMPT_PATH.exists():
             self.listen_prompt_template = self.LISTEN_PROMPT_PATH.read_text()
-
-        self.logits_prompt_template = None
-        if self.LOGITS_PROMPT_PATH.exists():
-            self.logits_prompt_template = self.LOGITS_PROMPT_PATH.read_text()
 
     def speak(self, name, obs, task_allocation):
         if self.speak_prompt_template is None:
@@ -153,57 +150,50 @@ class CommunicationFunctions:
 
         return comm_info
 
-    def get_logits(self, agent_name, comm, prompt):
-        if self.logits_prompt_template is None:
+    def get_logits(self, agent_name, comm, task_allocation):
+        if self.speak_prompt_template is None:
             raise FileNotFoundError(
                 f"Prompt file not found at {self.LOGITS_PROMPT_PATH}"
             )
         if self.client is None:
             raise RuntimeError("OpenAI client is not initialized (missing API key).")
 
-        logits_prompt = self.logits_prompt_template.format(
+        prompt = self.speak_prompt_template.format(
             agent_name=agent_name,
-            task_allocation=prompt,
-            message=comm,
+            task_allocation=task_allocation,
         )
 
-        response = self.client.responses.create(
-            model="gpt-4o-mini",
-            input=[
-                {
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": logits_prompt}],
-                }
-            ],
-            include=["message.output_text.logprobs"],
-            temperature=0,
-        )
+        enc = tiktoken.encoding_for_model("gpt-4o-mini")
+        comm_token_ids = enc.encode(comm)
 
-        logprob_sum = 0.0
-        found_logprobs = False
+        total_logprob = 0.0
+        prefix = ""
 
-        for output in response.output or []:
-            contents = (
-                output.get("content", [])
-                if isinstance(output, dict)
-                else getattr(output, "content", [])
+        for token_id in comm_token_ids:
+            gold_token = enc.decode([token_id])
+
+            resp = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": prefix},
+                ],
+                temperature=0,
+                max_completion_tokens=1,
+                logprobs=True,
+                top_logprobs=20,
             )
-            for content in contents or []:
-                logprobs = (
-                    content.get("logprobs", None)
-                    if isinstance(content, dict)
-                    else getattr(content, "logprobs", None)
-                )
-                if not logprobs:
-                    continue
-                found_logprobs = True
-                for token_info in logprobs:
-                    if isinstance(token_info, dict) and "logprob" in token_info:
-                        logprob_sum += token_info["logprob"]
-                    elif hasattr(token_info, "logprob"):
-                        logprob_sum += token_info.logprob
 
-        if not found_logprobs:
-            raise ValueError("Model response did not include logprobs.")
+            token_info = resp.choices[0].logprobs.content[0]
+            candidates = {c.token: c.logprob for c in token_info.top_logprobs}
 
-        return logprob_sum
+            if gold_token in candidates:
+                total_logprob += candidates[gold_token]
+            elif token_info.token == gold_token:
+                total_logprob += token_info.logprob
+            else:
+                total_logprob += -9999.0  # Very unlikely prob from docs
+
+            prefix += gold_token
+
+        return total_logprob

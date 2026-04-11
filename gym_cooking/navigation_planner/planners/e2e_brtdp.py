@@ -82,7 +82,7 @@ class E2E_BRTDP:
         # Setting up costs for value function.
         self.time_cost = 1.0
         self.action_cost = 0.1
-        self.comm_cost = 0.1
+        self.comm_cost = 0.099
 
     def __copy__(self):
         copy_ = E2E_BRTDP(
@@ -568,7 +568,7 @@ class E2E_BRTDP:
             return
 
         # Determine lower bound on this environment state.
-        if task_alloc_p == 0:
+        if task_alloc_p == 0 or (1 / task_alloc_p) == float("inf"):
             lower = env_state.world.perimeter + 1  # Our max distance
         else:
             lower = (
@@ -584,8 +584,6 @@ class E2E_BRTDP:
         lower = lower * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
-        if lower <= 0:
-            breakpoint()
         assert lower > 0, "lower: {}, {}, {}".format(
             lower, env_state.display(), env_state.print_agents()
         )

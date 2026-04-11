@@ -69,7 +69,7 @@ def parse_arguments():
     parser.add_argument(
         "--epsilon",
         type=float,
-        default=0.1,
+        default=0.3,
         help="The factor that the task allocation is believed to increase by.",
     )
 
