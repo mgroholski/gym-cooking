@@ -656,7 +656,11 @@ class BayesianDelegator(Delegator):
                         beta=beta,
                         no_level_1=False,
                     )  # P(a | s, z, ta)
-                    update += np.log(p)
+                    if p != 0:
+                        update += np.log(p)
+
+                    if np.isnan(update):
+                        breakpoint()
 
                     if comm_info is not None and subtask_agent_name in speaking_agents:
                         _, _, comm = comm_info[subtask_agent_name]

@@ -94,9 +94,6 @@ class SubtaskAllocDistribution:
     def update(self, subtask_alloc, factor):
         self.probs[tuple(subtask_alloc)] *= factor
 
-        if np.isnan(self.probs[tuple(subtask_alloc)]):
-            breakpoint()
-
     def delete(self, subtask_alloc):
         del self.probs[tuple(subtask_alloc)]
 
