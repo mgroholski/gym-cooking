@@ -477,6 +477,7 @@ class BayesianDelegator(Delegator):
         """Return the entire distribution of subtask allocations."""
         subtask_allocs = []
 
+        # TODO: Edit with divide and conquer of the same subtask if the subtask wrapper cnt is > 1.
         subtasks = list(self.incomplete_subtasks)
         # Just one agent: Assign itself to all subtasks.
         if len(self.all_agent_names) == 1:
@@ -513,7 +514,7 @@ class BayesianDelegator(Delegator):
                     )
                 # Divide and Conquer subtasks (different subtask assigned to remaining agents).
                 if len(subtasks_temp) > 1:
-                    for ts in permutations(subtasks_temp, 2):
+                    for ts in product(subtasks_temp, repeat=2):
                         subtask_alloc = [
                             SubtaskAllocation(
                                 subtask=ts[0], subtask_agent_names=(first_agents[0],)

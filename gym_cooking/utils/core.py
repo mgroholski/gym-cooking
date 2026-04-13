@@ -300,8 +300,14 @@ def mergeable(obj1, obj2):
         try:
             contents.remove(Plate())
         except:
+            item_cnt = {}
             for c in contents:  # everything else must be in last state
                 if not c.done():
+                    return False
+                item_cnt[c.full_name] = item_cnt.get(c.full_name, 0) + 1
+
+            for v in item_cnt.values():  # Cannot have more than one object merged.
+                if v > 1:
                     return False
         else:
             return False  # more than 1 plate

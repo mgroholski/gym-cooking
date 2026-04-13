@@ -107,8 +107,6 @@ class E2E_BRTDP:
         if action == nav_utils.COMM_ACTION:
             sim_task_alloc_p = min(1.0, sim_task_alloc_p + self.epsilon)
 
-        sim_task_alloc_p = min(1.0, sim_task_alloc_p)
-
         # Single agent
         if not self.is_joint:
             agent = subtask_agents[0]
