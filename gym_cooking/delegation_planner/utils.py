@@ -45,7 +45,9 @@ class SubtaskAllocDistribution:
         return list(self.probs.items())
 
     def get(self, subtask_alloc):
-        return np.exp(self.probs[tuple(subtask_alloc)])
+        log_p = self.probs[tuple(subtask_alloc)]
+        log_p = max(log_p, -700)  # ~ smallest safe value before exp underflows
+        return np.exp(log_p)
 
     def get_max(self):
         try:

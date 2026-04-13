@@ -566,7 +566,7 @@ class E2E_BRTDP:
             return
 
         # Determine lower bound on this environment state.
-        if task_alloc_p == 0 or (1 / task_alloc_p) == float("inf"):
+        if task_alloc_p == 0 or not np.isfinite(task_alloc_p):
             lower = env_state.world.perimeter + 1  # Our max distance
         else:
             lower = (
