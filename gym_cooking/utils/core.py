@@ -272,7 +272,10 @@ class Object:
 
     def unmerge(self, full_name):
         # remove by full_name, assumming all unique contents
-        matching = list(filter(lambda c: c.full_name == full_name, self.contents))
+        if full_name != "Plate":
+            matching = list(filter(lambda c: c.full_name == full_name, self.contents))
+        else:
+            matching = list(filter(lambda c: full_name in c.full_name, self.contents))
         self.contents.remove(matching[0])
         self.update_names()
         return matching[0]
@@ -481,8 +484,8 @@ class MeatPatty(Food):
 class Plate:
     def __init__(self):
         self.rep = "p"
-        self.name = "Plate"
-        self.full_name = "Plate"
+        self.name = "Plate0"
+        self.full_name = "Plate0"
         self.color = "white"
 
     def __hash__(self):

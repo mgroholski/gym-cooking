@@ -161,7 +161,7 @@ def get_obj(obj_string, type_, state, location=(None, None)):
             ]
             # getting into right food env
             for i, s in enumerate(obj_strs):
-                if s == "Plate":
+                if "Plate" in s:
                     continue
                 objects[i] = get_obj(
                     obj_string=s,
@@ -172,7 +172,11 @@ def get_obj(obj_string, type_, state, location=(None, None)):
             for obj in objects[1:]:
                 o.merge(obj.contents[0])
             return o
-        elif obj_string == "Plate":
+        elif "Plate" in obj_string:
+            plate_obj = Object(location, Plate())
+            plate_obj.name = obj_string
+            plate_obj.full_name = obj_string
+
             return Object(location, Plate())
         elif obj_string in StringToObject:
             obj = StringToObject[obj_string]()

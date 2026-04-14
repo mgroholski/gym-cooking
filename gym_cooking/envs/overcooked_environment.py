@@ -139,6 +139,7 @@ class OvercookedEnvironment(gym.Env):
             # Mark the phases of reading.
             phase = 1
             agent_idx = 0
+            plate_cnt = 0
             for line in file:
                 line = line.strip("\n")
                 if line == "":
@@ -148,7 +149,7 @@ class OvercookedEnvironment(gym.Env):
                 elif phase == 1:
                     for x, rep in enumerate(line):
                         # Object, i.e. Tomato, Lettuce, Onion, Plate. Potato, MeatPatty.
-                        if rep in "tlopPM":
+                        if rep in "tloPM":
                             counter = Counter(location=(x, y))
                             obj = Object(location=(x, y), contents=RepToClass[rep]())
                             counter.acquire(obj=obj)
@@ -156,10 +157,16 @@ class OvercookedEnvironment(gym.Env):
                             self.world.insert(obj=obj)
                             counter.is_dispenser = True
 
-                            if rep == "p":
-                                if self.world.plate_disp_loc is not None:
-                                    raise Exception("Can only have 1 plate dispenser!")
-                                self.world.plate_disp_loc = (x, y)
+                        elif rep in "p":
+                            counter = Counter(location=(x, y))
+                            obj = Object(location=(x, y), contents=RepToClass[rep]())
+                            obj.contents[0].name = f"Plate{plate_cnt}"
+                            obj.contents[0].full_name = f"Plate{plate_cnt}"
+                            obj.update_names()
+                            counter.acquire(obj=obj)
+                            self.world.insert(obj=counter)
+                            self.world.insert(obj=obj)
+                            plate_cnt += 1
 
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
@@ -334,7 +341,7 @@ class OvercookedEnvironment(gym.Env):
         active_orders = self.task_queue
 
         if active_orders:
-            recipes = list({o.recipe.name: o.recipe for o in active_orders}.values())
+            recipes = [o.recipe for o in active_orders]
         else:
             return []
 
@@ -346,7 +353,7 @@ class OvercookedEnvironment(gym.Env):
 
         all_subtasks = {}
         for order in active_orders:
-            for subtask in subtasks_by_recipe[order.recipe.name]:
+            for subtask in subtasks_by_recipe[f"{order.recipe.name}"]:
                 if subtask in all_subtasks:
                     all_subtasks[subtask].cnt += 1
                 else:
@@ -388,8 +395,6 @@ class OvercookedEnvironment(gym.Env):
                 self.add_order_to_queue()
 
         self.world.task_queue = self.task_queue
-        plate_disp = self.world.get_gridsquare_at(self.world.plate_disp_loc)
-        plate_disp.cnt = len(self.world.task_queue)
 
     def get_AB_locs_given_objs(
         self, subtask, subtask_agent_names, start_obj, goal_obj, subtask_action_obj
@@ -640,15 +645,6 @@ class OvercookedEnvironment(gym.Env):
                 or (np.random.random() < new_order_prob)
             ):
                 self.add_order_to_queue()
-                plate_gs = self.world.get_gridsquare_at(self.world.plate_disp_loc)
-
-                if not plate_gs.cnt:
-                    obj = Object(
-                        location=self.world.plate_disp_loc, contents=RepToClass["p"]()
-                    )
-                    plate_gs.acquire(obj)
-                    self.world.insert(obj)
-                plate_gs.cnt += 1
 
     def cache_distances(self):
         """Saving distances between world objects."""

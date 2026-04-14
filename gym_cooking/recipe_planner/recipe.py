@@ -1,3 +1,4 @@
+import copy
 from collections import namedtuple
 
 import recipe_planner.utils as recipe
@@ -7,14 +8,64 @@ OrderRepr = namedtuple("OrderRepr", "name is_complete")
 
 
 class Order:
-    def __init__(self, recipe, idx):
-        self.recipe = recipe
+    def __init__(self, init_recipe, idx):
+        init_recipe = self.index_recipe(copy.deepcopy(init_recipe), idx)
+        self.recipe = init_recipe
         self.idx = idx
         self.start_t = 0
         self.is_complete = False
 
     def get_repr(self):
         return OrderRepr(name=self.recipe.name, is_complete=self.is_complete)
+
+    def index_recipe(self, init_recipe, idx):
+        init_recipe.name = f"{init_recipe.name}{idx}"
+        for action in init_recipe.actions:
+            args = []
+            for arg in action.args:
+                if "Plate" in arg:
+                    args.append(arg.replace("Plate", f"Plate{idx}"))
+                else:
+                    args.append(arg)
+
+            action.args = tuple(args)
+
+            pre_l = []
+            for pre in action.pre:
+                args = []
+                for arg in pre.args:
+                    if arg is not None and "Plate" in arg:
+                        args.append(arg.replace("Plate", f"Plate{idx}"))
+                    else:
+                        args.append(arg)
+                pre.args = tuple(args)
+                pre_l.append(pre)
+            action.pre = pre_l
+
+            post_l = []
+            for post in action.post_add:
+                args = []
+                for arg in post.args:
+                    if arg is not None and "Plate" in arg:
+                        args.append(arg.replace("Plate", f"Plate{idx}"))
+                    else:
+                        args.append(arg)
+                post.args = tuple(args)
+                post_l.append(post)
+            action.post_add = post_l
+            action.set_specs()
+
+        init_recipe.full_state_name = init_recipe.full_state_name.replace(
+            "Plate", f"Plate{idx}"
+        )
+        init_recipe.full_plate_name = init_recipe.full_plate_name.replace(
+            "Plate", f"Plate{idx}"
+        )
+        init_recipe.full_state_plate_name = init_recipe.full_state_plate_name.replace(
+            "Plate", f"Plate{idx}"
+        )
+        init_recipe.goal = recipe.Delivered(init_recipe.full_plate_name)
+        return init_recipe
 
 
 class Recipe:

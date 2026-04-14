@@ -23,7 +23,6 @@ class World:
         self.arglist = arglist
         self.objects = defaultdict(lambda: [])
         self.task_queue = []
-        self.plate_disp_loc = None
 
     def get_repr(self):
         return self.get_dynamic_objects() + self.get_task_queue_repr()

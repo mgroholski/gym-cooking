@@ -10,7 +10,9 @@ import recipe_planner.utils as recipe
 from utils.core import Object
 
 OBJ_NAMES = [
-    "Plate",
+    "Plate0",
+    "Plate1",
+    "Plate2",
     "Tomato",
     "Lettuce",
     "Onion",
@@ -26,7 +28,6 @@ class STRIPSWorld:
 
         # set initial state
         self.initial.add_predicate(recipe.NoPredicate())
-
         for obj in world.get_object_list():
             if isinstance(obj, Object):
                 for obj_name in OBJ_NAMES:
@@ -42,6 +43,7 @@ class STRIPSWorld:
         graph.add_node(self.initial, obj=self.initial)
         frontier = set([self.initial])
         next_frontier = set()
+
         for i in range(max_path_length):
             # print("CHECKING FRONTIER #:", i)
             for state in frontier:
@@ -90,7 +92,11 @@ class STRIPSWorld:
                     for i in range(len(state_path) - 1)
                 ]
                 union_action_path = union_action_path | set(action_path)
-            # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
+            # print(
+            #     "all tasks for recipe {}: {}\n".format(
+            #         recipe_obj.name, ", ".join([str(a) for a in union_action_path])
+            #     )
+            # )
             action_paths_dict[recipe_obj.name] = union_action_path
 
         return action_paths_dict

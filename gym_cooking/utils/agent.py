@@ -134,13 +134,15 @@ class RealAgent:
     def generate_communication(self, obs):
         return self.comm_func.speak(self.name, obs, self.delegator.probs.get_max())
 
-    def get_subtasks(self, recipes, world) -> Dict:
+    def get_subtasks(self, world) -> Dict:
         """Return different subtask permutations for active orders."""
 
         active_tasks = list(getattr(world, "task_queue", []))
 
         if not len(active_tasks):
             return {}
+
+        recipes = [o.recipe for o in active_tasks]
 
         self.sw = STRIPSWorld(world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
@@ -150,7 +152,7 @@ class RealAgent:
 
         all_subtasks = {}
         for order in active_tasks:
-            for subtask in self.subtasks_by_recipe[order.recipe.name]:
+            for subtask in self.subtasks_by_recipe[f"{order.recipe.name}"]:
                 if subtask in all_subtasks:
                     all_subtasks[subtask].cnt += 1
                 else:
@@ -161,7 +163,7 @@ class RealAgent:
     def setup_subtasks(self, env):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
 
-        self.subtask_to_wrapper_dict = self.get_subtasks(env.recipes, env.world)
+        self.subtask_to_wrapper_dict = self.get_subtasks(env.world)
         self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
 
         print(
