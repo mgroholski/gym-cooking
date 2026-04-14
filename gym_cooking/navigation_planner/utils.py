@@ -173,11 +173,12 @@ def get_obj(obj_string, type_, state, location=(None, None)):
                 o.merge(obj.contents[0])
             return o
         elif "Plate" in obj_string:
-            plate_obj = Object(location, Plate())
-            plate_obj.name = obj_string
-            plate_obj.full_name = obj_string
+            plate_item = Plate()
+            plate_item.name = obj_string
+            plate_item.full_name = obj_string
+            plate_obj = Object(location, plate_item)
 
-            return Object(location, Plate())
+            return plate_obj
         elif obj_string in StringToObject:
             obj = StringToObject[obj_string]()
             obj.set_state(state)
