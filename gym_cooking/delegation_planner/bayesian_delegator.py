@@ -201,12 +201,22 @@ class BayesianDelegator(Delegator):
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
                     try:
-                        lb = self.get_lower_bound_for_subtask_alloc(
-                            obs=copy.copy(obs),
-                            task_alloc_p=some_probs.get(subtask_alloc),
-                            subtask=t.subtask,
-                            subtask_agent_names=t.subtask_agent_names,
+                        start_obj, goal_obj = nav_utils.get_subtask_obj(t.subtask)
+                        action_obj = nav_utils.get_subtask_action_obj(t.subtask)
+                        lb = obs.get_lower_bound_for_subtask_given_objs(
+                            t.subtask,
+                            t.subtask_agent_names,
+                            start_obj,
+                            goal_obj,
+                            action_obj,
                         )
+
+                        # lb = self.get_lower_bound_for_subtask_alloc(
+                        #     obs=copy.copy(obs),
+                        #     task_alloc_p=some_probs.get(subtask_alloc),
+                        #     subtask=t.subtask,
+                        #     subtask_agent_names=t.subtask_agent_names,
+                        # )
                         total_weight += 1.0 / float(lb)
                     except Exception as e:
                         print(e)
