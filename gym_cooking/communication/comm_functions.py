@@ -53,8 +53,8 @@ class CommunicationFunctions:
         )
         return response.output_text
 
-    def listen(self, name, obs, task_alloc_dist):
-        messages = {k: v for k, v in obs.comms.items()}
+    def listen(self, name, comms, task_alloc_dist):
+        messages = {k: v for k, v in comms.items()}
         task_allocs = [
             t for t in task_alloc_dist.probs.keys() if task_alloc_dist.get(t) != 0
         ]

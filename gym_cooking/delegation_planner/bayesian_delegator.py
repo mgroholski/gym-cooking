@@ -599,7 +599,7 @@ class BayesianDelegator(Delegator):
                 ]
                 self.probs = SubtaskAllocDistribution(subtask_allocs)
 
-    def bayes_update(self, obs_tm1, actions_tm1, comm_info, beta):
+    def bayes_update(self, obs_tm1, actions_tm1, comm_info_tm1, comm_info, beta):
         """Apply Bayesian update based on previous observation (obs_tms1)
         and most recent actions taken (actions_tm1). Beta is used to determine
         how rational agents act."""
@@ -622,9 +622,12 @@ class BayesianDelegator(Delegator):
         probs_tm1 = copy.copy(self.probs)
         ta_set = self.probs.enumerate_subtask_allocs()
 
+        if comm_info_tm1 is not None:
+            epsilon_per_comm = self.epsilon / float(len(comm_info_tm1))
+            speaking_agents_tm1 = set([k for k in comm_info_tm1.keys()])
+
         if comm_info is not None:
-            epsilon_per_comm = self.epsilon / float(len(comm_info))
-            speaking_agents = set([k for k in comm_info.keys()])
+            speaking_agents_t = set([k for k in comm_info.keys()])
 
         for task_alloc in ta_set:
             update = 0.0
@@ -632,11 +635,11 @@ class BayesianDelegator(Delegator):
             for t in task_alloc:
                 for subtask_agent_name in t.subtask_agent_names:
                     agent_subtask_alloc_tm1 = task_alloc_p_tm1
-                    if comm_info is not None:
-                        for agent_name in speaking_agents.difference(
+                    if comm_info_tm1 is not None:
+                        for agent_name in speaking_agents_tm1.difference(
                             [subtask_agent_name]
                         ):
-                            task_alloc_z, c, _ = comm_info[agent_name]
+                            task_alloc_z, c, _ = comm_info_tm1[agent_name]
                             if task_alloc_z == task_alloc:
                                 agent_subtask_alloc_tm1 = min(
                                     1.0,
@@ -661,7 +664,7 @@ class BayesianDelegator(Delegator):
                     if p != 0:
                         update += np.log(p)
 
-                    if comm_info is not None and subtask_agent_name in speaking_agents:
+                    if comm_info is not None and subtask_agent_name in comm_info:
                         _, _, comm = comm_info[subtask_agent_name]
                         logit_p = self.comm_funcs.get_logits(
                             subtask_agent_name, comm, task_alloc

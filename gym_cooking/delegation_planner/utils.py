@@ -107,5 +107,6 @@ class SubtaskAllocDistribution:
         log_total = sp.special.logsumexp(log_probs)
 
         for subtask_alloc in self.probs.keys():
-            self.probs[subtask_alloc] = self.probs[subtask_alloc] - log_total
+            self.probs[subtask_alloc] -= log_total
+
         return self.probs

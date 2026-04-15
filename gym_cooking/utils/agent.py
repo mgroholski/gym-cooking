@@ -107,7 +107,7 @@ class RealAgent:
         print("===============================")
         print(f"[{self.name}.select_action] @ TIMESTEP {obs.t}")
         print("===============================")
-        print(f"Task Allocation Probabilities:\n{str(self.delegator.probs)}")
+        print(f"Pre-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}")
         print(
             "Incomplete Subtasks:\n",
             "\n".join([f"\t{str(v)}" for v in self.subtask_to_wrapper_dict.values()]),
@@ -117,6 +117,10 @@ class RealAgent:
         self.update_subtasks(env=obs)
         self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
             agent_name=self.name,
+        )
+
+        print(
+            f"Post-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}"
         )
         self.plan(copy.copy(obs))
 
@@ -290,12 +294,19 @@ class RealAgent:
                 comm_info = None
                 if len(env.comms):
                     comm_info = self.comm_func.listen(
-                        self.name, env, self.delegator.probs
+                        self.name, env.comms, self.delegator.probs
+                    )
+
+                comm_info_tm1 = None
+                if len(env.obs_tm1.comms):
+                    comm_info_tm1 = self.comm_func.listen(
+                        self.name, env.obs_tm1.comms, self.delegator.probs
                     )
 
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
                     actions_tm1=env.agent_actions,
+                    comm_info_tm1=comm_info_tm1,
                     comm_info=comm_info,
                     beta=self.beta,
                 )
