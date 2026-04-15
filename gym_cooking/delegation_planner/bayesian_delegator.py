@@ -664,7 +664,10 @@ class BayesianDelegator(Delegator):
                     if p != 0:
                         update += np.log(p)
 
-                    if comm_info is not None and subtask_agent_name in comm_info:
+                    if (
+                        comm_info is not None
+                        and subtask_agent_name in speaking_agents_t
+                    ):
                         _, _, comm = comm_info[subtask_agent_name]
                         logit_p = self.comm_funcs.get_logits(
                             subtask_agent_name, comm, task_alloc
