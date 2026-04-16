@@ -37,6 +37,7 @@ class SubtaskAllocDistribution:
     def __copy__(self):
         new = self.__class__.__new__(self.__class__)
         new.probs = copy.deepcopy(self.probs)
+        new.D = self.D
         return new
 
     def enumerate_subtask_allocs(self):
