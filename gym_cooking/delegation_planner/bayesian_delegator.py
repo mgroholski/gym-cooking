@@ -227,9 +227,9 @@ class BayesianDelegator(Delegator):
                         exit(1)
 
             # Weight by number of nonzero subtasks.
-            some_probs.update(
+            some_probs.set(
                 subtask_alloc=subtask_alloc,
-                factor=np.log(len(t) ** 2.0 * total_weight),
+                value=np.log(len(t) ** 2.0 * total_weight),
             )
         return some_probs
 
