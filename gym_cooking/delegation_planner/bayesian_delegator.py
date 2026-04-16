@@ -174,10 +174,13 @@ class BayesianDelegator(Delegator):
 
         return subtask_alloc_probs
 
-    def set_priors(self, obs, incomplete_subtasks, priors_type):
+    def set_priors(
+        self, obs, incomplete_subtasks, subtask_to_wrapper_dict, priors_type
+    ):
         """Setting the prior probabilities for subtask allocations."""
         print("{} setting priors".format(self.agent_name))
         self.incomplete_subtasks = incomplete_subtasks
+        self.subtask_to_wrapper_dict = subtask_to_wrapper_dict
 
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
@@ -471,7 +474,10 @@ class BayesianDelegator(Delegator):
                 other_subtask_allocs.append(new_subtask_alloc)
             # Divide and Conquer subtasks (different subtask assigned to remaining agents).
             if len(remaining_subtasks) > 1:
-                for ts in permutations(remaining_subtasks, 2):
+                for ts in product(remaining_subtasks, repeat=2):
+                    if ts[0] == ts[1] and self.subtask_to_wrapper_dict[ts[0]].cnt == 1:
+                        continue
+
                     new_subtask_alloc = base_subtask_alloc + [
                         SubtaskAllocation(
                             subtask=ts[0], subtask_agent_names=(remaining_agents[0],)
@@ -487,7 +493,6 @@ class BayesianDelegator(Delegator):
         """Return the entire distribution of subtask allocations."""
         subtask_allocs = []
 
-        # TODO: Edit with divide and conquer of the same subtask if the subtask wrapper cnt is > 1.
         subtasks = list(self.incomplete_subtasks)
         # Just one agent: Assign itself to all subtasks.
         if len(self.all_agent_names) == 1:
@@ -525,6 +530,14 @@ class BayesianDelegator(Delegator):
                 # Divide and Conquer subtasks (different subtask assigned to remaining agents).
                 if len(subtasks_temp) > 1:
                     for ts in product(subtasks_temp, repeat=2):
+                        if (
+                            ts[0] is not None
+                            and ts[0] == ts[1]
+                            and self.subtask_to_wrapper_dict[ts[0]].cnt == 1
+                        ):
+                            # Continue if there's only 1 of ts that needs to be accomplished.
+                            continue
+
                         subtask_alloc = [
                             SubtaskAllocation(
                                 subtask=ts[0], subtask_agent_names=(first_agents[0],)

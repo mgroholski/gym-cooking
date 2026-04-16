@@ -243,11 +243,14 @@ class RealAgent:
             print("{} has no subtask".format(color(self.name, self.color)))
 
         for incomplete_subtask in self.incomplete_subtasks:
-            if self.check_incomplete_subtask(world, incomplete_subtask) and not (
-                incomplete_subtask == self.subtask and self.subtask_complete
-            ):
-                self.remove_subtask(incomplete_subtask)
-                break
+            if incomplete_subtask == self.subtask and self.subtask_complete:
+                if self.check_incomplete_subtask(world, incomplete_subtask, cnt=1):
+                    self.remove_subtask(incomplete_subtask)
+                    break
+            else:
+                if self.check_incomplete_subtask(world, incomplete_subtask):
+                    self.remove_subtask(incomplete_subtask)
+                    break
 
         self.world = copy.copy(world)
 
@@ -281,6 +284,7 @@ class RealAgent:
             self.delegator.set_priors(
                 obs=copy.copy(env),
                 incomplete_subtasks=self.incomplete_subtasks,
+                subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
                 priors_type=self.priors,
             )
         else:
@@ -288,6 +292,7 @@ class RealAgent:
                 self.delegator.set_priors(
                     obs=copy.copy(env),
                     incomplete_subtasks=self.incomplete_subtasks,
+                    subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
                     priors_type=self.priors,
                 )
             else:
@@ -396,7 +401,7 @@ class RealAgent:
 
         print("{} proposed action: {}\n".format(self.name, self.action))
 
-    def check_incomplete_subtask(self, world, subtask):
+    def check_incomplete_subtask(self, world, subtask, cnt=0):
         _, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
         subtask_action_object = nav_utils.get_subtask_action_obj(subtask=subtask)
 
@@ -428,14 +433,10 @@ class RealAgent:
                 )
             )
 
-            return new_obj_count > cur_obj_count
+            return new_obj_count > (cur_obj_count + cnt)
         else:
             cur_obj_cnt = len(self.world.get_all_object_locs(obj=goal_obj))
-            more_cur_obj = len(world.get_all_object_locs(obj=goal_obj)) > cur_obj_cnt
-
-            if more_cur_obj:
-                print(f"{subtask} is finished. Removing {subtask}.")
-            return more_cur_obj
+            return len(world.get_all_object_locs(obj=goal_obj)) > (cur_obj_cnt + cnt)
 
     def def_subtask_completion(self, env):
         # Determine desired objects.
