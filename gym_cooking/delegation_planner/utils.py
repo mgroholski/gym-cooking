@@ -12,6 +12,7 @@ class SubtaskAllocDistribution:
 
     def __init__(self, subtask_allocs):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
+        self.D = 50
 
         self.probs = {}
         if len(subtask_allocs) == 0:
@@ -47,7 +48,11 @@ class SubtaskAllocDistribution:
     def get(self, subtask_alloc):
         log_p = self.probs[tuple(subtask_alloc)]
         log_p = max(log_p, -700)  # ~ smallest safe value before exp underflows
-        return np.exp(log_p)
+        p = np.exp(log_p)
+
+        # Discretize to a factor of D
+        p_discrete = np.round(p * self.D) / float(self.D)
+        return float(np.clip(p_discrete, 0.0, 1.0))
 
     def get_max(self):
         try:
