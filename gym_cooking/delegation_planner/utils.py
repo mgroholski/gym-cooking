@@ -6,6 +6,8 @@ import numpy as np
 import scipy as sp
 from utils.utils import agent_settings
 
+NEG_INF_LOG_VAL = -700
+
 
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
@@ -48,7 +50,7 @@ class SubtaskAllocDistribution:
 
     def get(self, subtask_alloc):
         log_p = self.probs[tuple(subtask_alloc)]
-        log_p = max(log_p, -700)  # ~ smallest safe value before exp underflows
+        log_p = max(log_p, NEG_INF_LOG_VAL)
         p = np.exp(log_p)
 
         # Discretize to a factor of D

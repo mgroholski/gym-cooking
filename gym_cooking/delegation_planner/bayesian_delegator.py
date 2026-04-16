@@ -7,7 +7,7 @@ import numpy as np
 import recipe_planner.utils as recipe
 import scipy as sp
 from delegation_planner.delegator import Delegator
-from delegation_planner.utils import SubtaskAllocDistribution
+from delegation_planner.utils import NEG_INF_LOG_VAL, SubtaskAllocDistribution
 from navigation_planner.utils import (
     get_single_actions,
     get_subtask_action_obj,
@@ -686,6 +686,8 @@ class BayesianDelegator(Delegator):
                     )  # P(a | s, z, ta)
                     if p != 0:
                         update += np.log(p)
+                    else:
+                        update += NEG_INF_LOG_VAL
 
                     if (
                         comm_info is not None
@@ -695,7 +697,6 @@ class BayesianDelegator(Delegator):
                         logit_p = self.comm_funcs.get_logits(
                             subtask_agent_name, comm, task_alloc
                         )
-
                         update += logit_p
             self.probs.update(subtask_alloc=task_alloc, factor=update)
             print("UPDATING: subtask_alloc {} by {}".format(task_alloc, update))
