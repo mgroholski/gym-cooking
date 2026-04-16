@@ -6,7 +6,7 @@ import numpy as np
 import scipy as sp
 from utils.utils import agent_settings
 
-NEG_INF_LOG_VAL = -700
+NEG_INF_LOG_VAL = np.finfo(float).tiny
 
 
 class SubtaskAllocDistribution:
