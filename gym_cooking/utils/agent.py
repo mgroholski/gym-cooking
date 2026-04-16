@@ -236,6 +236,7 @@ class RealAgent:
             # Refresh for incomplete subtasks.
             if self.subtask_complete:
                 if self.subtask in self.incomplete_subtasks:
+                    print(f"Non-Agent Remove: Removing {self.subtask}...")
                     self.remove_subtask(self.subtask)
                     self.subtask_complete = True
 
@@ -243,12 +244,16 @@ class RealAgent:
             print("{} has no subtask".format(color(self.name, self.color)))
 
         for incomplete_subtask in self.incomplete_subtasks:
-            if incomplete_subtask == self.subtask and self.subtask_complete:
+            if (
+                incomplete_subtask == self.subtask and self.subtask_complete
+            ):  # If the agents have the same subtask and the current agent finish the subtask then we want to check if
                 if self.check_incomplete_subtask(world, incomplete_subtask, cnt=1):
                     self.remove_subtask(incomplete_subtask)
+                    print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     break
             else:
                 if self.check_incomplete_subtask(world, incomplete_subtask):
+                    print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     self.remove_subtask(incomplete_subtask)
                     break
 
@@ -266,10 +271,11 @@ class RealAgent:
         ):
             self.subtask_to_wrapper_dict[subtask].cnt -= 1
             self.delegator.planner.reset_value_caches(subtask)
-        else:
-            if subtask in self.subtask_to_wrapper_dict:
-                del self.subtask_to_wrapper_dict[subtask]
+        elif subtask in self.subtask_to_wrapper_dict:
+            del self.subtask_to_wrapper_dict[subtask]
             self.incomplete_subtasks.remove(subtask)
+        else:
+            raise Exception(f"{subtask} not in subtask_wrapper_dict")
 
         self.subtask_removed = True
 
