@@ -567,7 +567,7 @@ class E2E_BRTDP:
 
         # Determine lower bound on this environment state.
         if task_alloc_p == 0:
-            lower = env_state.world.perimeter + 1  # Our max distance
+            lower = float("inf")
         else:
             lower = (
                 1 / task_alloc_p
