@@ -115,7 +115,7 @@ class RealAgent:
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
-        self.new_subtask, self.new_subtask_agent_names, new_task_alloc = (
+        self.new_subtask, self.new_subtask_agent_names, self.new_task_alloc = (
             self.delegator.select_subtask(
                 agent_name=self.name,
             )
@@ -126,14 +126,14 @@ class RealAgent:
         )
         self.plan(copy.copy(obs))
 
-        if new_task_alloc is not None:
-            self.task_alloc_p_tm1 = self.delegator.probs.get(new_task_alloc)
+        if self.new_task_alloc is not None:
+            self.task_alloc_p_tm1 = self.delegator.probs.get(self.new_task_alloc)
         else:
             self.task_alloc_p_tm1 = 1
 
         comm = None
         if self.action == nav_utils.COMM_ACTION:
-            comm = self.generate_communication(obs, new_task_alloc)
+            comm = self.generate_communication(obs, self.new_task_alloc)
         return self.action, comm
 
     def generate_communication(self, obs, task_alloc):
@@ -381,7 +381,7 @@ class RealAgent:
                 )
             )
 
-            new_subtask_p = self.delegator.probs.get(self.delegator.probs.get_max())
+            new_subtask_p = self.delegator.probs.get(self.new_task_alloc)
             action = self.planner.get_next_action(
                 env=env,
                 task_alloc_p=new_subtask_p,
@@ -404,6 +404,7 @@ class RealAgent:
         self.subtask = self.new_subtask
         self.subtask_agent_names = self.new_subtask_agent_names
         self.new_subtask = None
+        self.new_task_alloc = None
         self.new_subtask_agent_names = []
 
         print("{} proposed action: {}\n".format(self.name, self.action))
