@@ -246,7 +246,7 @@ class BayesianDelegator(Delegator):
             if other_agent_name != self.agent_name:
                 # Get most likely subtask and subtask agents for other agent
                 # based on my beliefs.
-                subtask, subtask_agent_names = self.select_subtask(
+                subtask, subtask_agent_names, max_task_alloc = self.select_subtask(
                     agent_name=other_agent_name
                 )
 
@@ -261,7 +261,7 @@ class BayesianDelegator(Delegator):
                 planner = copy.copy(self.planner)
                 planner.set_settings(
                     env=copy.copy(obs),
-                    task_alloc_p=self.probs.get(self.probs.get_max()),
+                    task_alloc_p=self.probs.get(max_task_alloc),
                     subtask=subtask,
                     subtask_agent_names=subtask_agent_names,
                 )
@@ -277,6 +277,7 @@ class BayesianDelegator(Delegator):
         if no_level_1:
             # Level 0 planning: Just use obs_tm1.
             state = obs_tm1
+            task_alloc_p = task_alloc_p_tm1
             # Assume other agents are fixed.
             other_planners = {}
         else:
@@ -606,8 +607,8 @@ class BayesianDelegator(Delegator):
         if max_subtask_alloc is not None:
             for t in max_subtask_alloc:
                 if agent_name in t.subtask_agent_names:
-                    return t.subtask, t.subtask_agent_names
-        return None, agent_name
+                    return t.subtask, t.subtask_agent_names, max_subtask_alloc
+        return (None, agent_name, None)
 
     def ensure_at_least_one_subtask(self):
         # Make sure each agent has None task by itself.

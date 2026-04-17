@@ -6,7 +6,10 @@ P  p  P
 o  p  o
 -------
 
+Salad
+OnionSalad
 SimpleLettuce
+SimpleTomato
 
 2 1
 5 1

@@ -115,8 +115,10 @@ class RealAgent:
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
-        self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
-            agent_name=self.name,
+        self.new_subtask, self.new_subtask_agent_names, new_task_alloc = (
+            self.delegator.select_subtask(
+                agent_name=self.name,
+            )
         )
 
         print(
@@ -124,19 +126,18 @@ class RealAgent:
         )
         self.plan(copy.copy(obs))
 
-        max_subtask_alloc = self.delegator.probs.get_max()
-        if max_subtask_alloc is not None:
-            self.task_alloc_p_tm1 = self.delegator.probs.get(max_subtask_alloc)
+        if new_task_alloc is not None:
+            self.task_alloc_p_tm1 = self.delegator.probs.get(new_task_alloc)
         else:
             self.task_alloc_p_tm1 = 1
 
         comm = None
         if self.action == nav_utils.COMM_ACTION:
-            comm = self.generate_communication(obs)
+            comm = self.generate_communication(obs, new_task_alloc)
         return self.action, comm
 
-    def generate_communication(self, obs):
-        return self.comm_func.speak(self.name, obs, self.delegator.probs.get_max())
+    def generate_communication(self, obs, task_alloc):
+        return self.comm_func.speak(self.name, obs, task_alloc)
 
     def get_subtasks(self, world) -> Dict:
         """Return different subtask permutations for active orders."""
