@@ -1,10 +1,8 @@
 import copy
 import random
-from collections import namedtuple
 
 import numpy as np
 import scipy as sp
-from utils.utils import agent_settings
 
 NEG_INF_LOG_VAL = np.finfo(float).tiny
 
@@ -29,7 +27,7 @@ class SubtaskAllocDistribution:
     def __str__(self):
         s = ""
         for subtask_alloc, p in self.probs.items():
-            s + "{"
+            s += "{"
             for subtask, subtask_agent_names in subtask_alloc:
                 s += f"({subtask}, {subtask_agent_names}),"
 
@@ -71,22 +69,6 @@ class SubtaskAllocDistribution:
         except Exception as e:
             print(e)
             breakpoint()
-
-    def get_max_bucketed(self):
-        subtasks = []
-        probs = []
-        for subtask_alloc, p in self.probs.items():
-            for t in subtask_alloc:
-                if agent_name in t.subtask_agent_names:
-                    # If already accounted for, then add probability.
-                    if t in subtasks:
-                        probs[subtasks.index(t)] += p
-                    # Otherwise, make a new element in the distribution.
-                    else:
-                        subtasks.append(t)
-                        probs.append(p)
-        best_subtask = subtasks[np.argmax(probs)]
-        return self.probs.get_best_containing(best_subtask)
 
     def get_best_containing(self, subtask):
         """Return max likelihood subtask_alloc that contains the given subtask."""
