@@ -122,6 +122,7 @@ class Action:
 
     def is_valid_in(self, state):
         temp_state = copy.copy(state)
+
         for pre in self.pre:
             try:
                 temp_state.delete_predicate(pre)
@@ -149,8 +150,8 @@ class Get(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)  # ('Tomato')
 
-        self.pre_default = [NoPredicate()]
-        self.post_add_default = [Fresh(obj), NoPredicate()]
+        self.pre_default = [Fresh(obj)]
+        self.post_add_default = [Fresh(obj)]
         Action.__init__(self, "Get", pre, post_add)
 
 

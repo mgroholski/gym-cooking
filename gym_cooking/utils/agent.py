@@ -222,6 +222,7 @@ class RealAgent:
 
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
+
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
             self.subtask_complete = self.is_subtask_complete(world)
             print(
@@ -254,9 +255,57 @@ class RealAgent:
                     break
             else:
                 if self.check_incomplete_subtask(world, incomplete_subtask):
-                    print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     self.remove_subtask(incomplete_subtask)
+                    print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     break
+
+        if self.subtask_removed:
+            tasks = world.task_queue
+            recipes = list(set([o.recipe for o in tasks]))
+            self.sw = STRIPSWorld(world, recipes)
+            subtasks_by_recipe = self.sw.get_subtasks(
+                max_path_length=self.arglist.max_num_subtasks
+            )
+
+            incomplete_subtasks = []
+            for task in tasks:
+                for subtask in subtasks_by_recipe[task.recipe.name]:
+                    incomplete_subtasks.append(subtask)
+
+            self.subtask_to_wrapper_dict = {}
+            for incomplete_subtask in incomplete_subtasks:
+                if incomplete_subtask in self.subtask_to_wrapper_dict:
+                    self.subtask_to_wrapper_dict[incomplete_subtask].cnt += 1
+                else:
+                    self.subtask_to_wrapper_dict[incomplete_subtask] = ActionCntWrapper(
+                        incomplete_subtask
+                    )
+
+            self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
+        elif len(self.world.task_queue) != len(world.task_queue):
+            """
+            Get sub-tasks from new_orders then increment or add to the incomplete subtask
+            list.
+            """
+            new_tasks = world.task_queue[
+                len(self.world.task_queue) : len(world.task_queue)
+            ]
+            new_recipes = list(set([o.recipe for o in new_tasks]))
+            self.sw = STRIPSWorld(world, new_recipes)
+            subtasks_by_recipe = self.sw.get_subtasks(
+                max_path_length=self.arglist.max_num_subtasks
+            )
+
+            for task in new_tasks:
+                for subtask in subtasks_by_recipe[task.recipe.name]:
+                    if subtask in self.subtask_to_wrapper_dict:
+                        self.subtask_to_wrapper_dict[subtask].cnt += 1
+                    else:
+                        self.subtask_to_wrapper_dict[subtask] = ActionCntWrapper(
+                            subtask
+                        )
+
+            self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
 
         self.world = copy.copy(world)
 

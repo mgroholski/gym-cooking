@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 # helpers
 import networkx as nx
-import recipe_planner.utils as recipe
+import recipe_planner.utils as recipe_utils
 
 # core modules
 from utils.core import Object
@@ -23,16 +23,16 @@ OBJ_NAMES = [
 
 class STRIPSWorld:
     def __init__(self, world, recipes):
-        self.initial = recipe.STRIPSState()
+        self.initial = recipe_utils.STRIPSState()
         self.recipes = recipes
 
         # set initial state
-        self.initial.add_predicate(recipe.NoPredicate())
+        self.initial.add_predicate(recipe_utils.NoPredicate())
         for obj in world.get_object_list():
             if isinstance(obj, Object):
                 for obj_name in OBJ_NAMES:
                     if obj.contains(obj_name):
-                        self.initial.add_predicate(recipe.Fresh(obj_name))
+                        self.initial.add_predicate(recipe_utils.Fresh(obj_name))
 
     def generate_graph(self, recipe, max_path_length):
         all_actions = recipe.actions  # set
@@ -46,6 +46,8 @@ class STRIPSWorld:
 
         for i in range(max_path_length):
             # print("CHECKING FRONTIER #:", i)
+            # if i > 5:
+            #     breakpoint()
             for state in frontier:
                 # for each action, check whether from this state
                 for action in all_actions:
@@ -66,6 +68,7 @@ class STRIPSWorld:
             frontier = next_frontier.copy()
 
         if goal_state is None:
+            breakpoint()
             print("goal state could not be found, try increasing --max-num-subtasks")
             import sys
 
