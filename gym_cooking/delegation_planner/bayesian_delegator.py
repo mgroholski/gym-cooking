@@ -54,7 +54,7 @@ class BayesianDelegator(Delegator):
         self.epsilon = epsilon
         self.comm_funcs = comm_funcs
 
-    def should_reset_priors(self, obs, incomplete_subtasks):
+    def should_reset_priors(self, obs, subtask_to_wrapper_dict, incomplete_subtasks):
         """Returns whether priors should be reset.
 
         Priors should be reset when 1) They haven't yet been set or
@@ -73,6 +73,7 @@ class BayesianDelegator(Delegator):
             return True
         # Get currently available subtasks.
         self.incomplete_subtasks = incomplete_subtasks
+        self.subtask_to_wrapper_dict = subtask_to_wrapper_dict
         probs = self.get_subtask_alloc_probs()
         probs = self.prune_subtask_allocs(observation=obs, subtask_alloc_probs=probs)
 
@@ -541,10 +542,12 @@ class BayesianDelegator(Delegator):
 
                         subtask_alloc = [
                             SubtaskAllocation(
-                                subtask=ts[0], subtask_agent_names=(first_agents[0],)
+                                subtask=ts[0],
+                                subtask_agent_names=(first_agents[0],),
                             ),
                             SubtaskAllocation(
-                                subtask=ts[1], subtask_agent_names=(first_agents[1],)
+                                subtask=ts[1],
+                                subtask_agent_names=(first_agents[1],),
                             ),
                         ]
                         remaining_agents = sorted(
@@ -556,6 +559,7 @@ class BayesianDelegator(Delegator):
                             remaining_subtasks=remaining_subtasks,
                             base_subtask_alloc=subtask_alloc,
                         )
+
         return SubtaskAllocDistribution(subtask_allocs)
 
     def add_greedy_subtasks(self):

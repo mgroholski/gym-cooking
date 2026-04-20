@@ -16,7 +16,6 @@ def index_ingredient_str(ingredient_str, idx):
 
 class Order:
     def __init__(self, init_recipe, idx):
-        init_recipe = self.index_recipe(copy.deepcopy(init_recipe), idx)
         self.recipe = init_recipe
         self.idx = idx
         self.start_t = 0

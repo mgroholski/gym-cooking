@@ -148,20 +148,15 @@ class RealAgent:
             return {}
 
         recipes = [o.recipe for o in active_tasks]
-
         self.sw = STRIPSWorld(world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
-        self.subtasks_by_recipe = self.sw.get_subtasks(
+        subtask_cnts = self.sw.get_subtask_cnts(
             max_path_length=self.arglist.max_num_subtasks
         )
 
         all_subtasks = {}
-        for order in active_tasks:
-            for subtask in self.subtasks_by_recipe[f"{order.recipe.name}"]:
-                if subtask in all_subtasks:
-                    all_subtasks[subtask].cnt += 1
-                else:
-                    all_subtasks[subtask] = ActionCntWrapper(subtask)
+        for subtask_cnt in subtask_cnts:
+            all_subtasks[subtask_cnt.action] = subtask_cnt
 
         return all_subtasks
 
@@ -194,32 +189,6 @@ class RealAgent:
 
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
-
-        if len(self.world.task_queue) != len(world.task_queue):
-            """
-            Get sub-tasks from new_orders then increment or add to the incomplete subtask
-            list.
-            """
-            new_tasks = world.task_queue[
-                len(self.world.task_queue) : len(world.task_queue)
-            ]
-            new_recipes = list(set([o.recipe for o in new_tasks]))
-            self.sw = STRIPSWorld(world, new_recipes)
-            subtasks_by_recipe = self.sw.get_subtasks(
-                max_path_length=self.arglist.max_num_subtasks
-            )
-
-            for task in new_tasks:
-                for subtask in subtasks_by_recipe[task.recipe.name]:
-                    if subtask in self.subtask_to_wrapper_dict:
-                        self.subtask_to_wrapper_dict[subtask].cnt += 1
-                    else:
-                        self.subtask_to_wrapper_dict[subtask] = ActionCntWrapper(
-                            subtask
-                        )
-
-            self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
-
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
 
@@ -259,52 +228,8 @@ class RealAgent:
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     break
 
-        if self.subtask_removed:
-            tasks = world.task_queue
-            recipes = list(set([o.recipe for o in tasks]))
-            self.sw = STRIPSWorld(world, recipes)
-            subtasks_by_recipe = self.sw.get_subtasks(
-                max_path_length=self.arglist.max_num_subtasks
-            )
-
-            incomplete_subtasks = []
-            for task in tasks:
-                for subtask in subtasks_by_recipe[task.recipe.name]:
-                    incomplete_subtasks.append(subtask)
-
-            self.subtask_to_wrapper_dict = {}
-            for incomplete_subtask in incomplete_subtasks:
-                if incomplete_subtask in self.subtask_to_wrapper_dict:
-                    self.subtask_to_wrapper_dict[incomplete_subtask].cnt += 1
-                else:
-                    self.subtask_to_wrapper_dict[incomplete_subtask] = ActionCntWrapper(
-                        incomplete_subtask
-                    )
-
-            self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
-        elif len(self.world.task_queue) != len(world.task_queue):
-            """
-            Get sub-tasks from new_orders then increment or add to the incomplete subtask
-            list.
-            """
-            new_tasks = world.task_queue[
-                len(self.world.task_queue) : len(world.task_queue)
-            ]
-            new_recipes = list(set([o.recipe for o in new_tasks]))
-            self.sw = STRIPSWorld(world, new_recipes)
-            subtasks_by_recipe = self.sw.get_subtasks(
-                max_path_length=self.arglist.max_num_subtasks
-            )
-
-            for task in new_tasks:
-                for subtask in subtasks_by_recipe[task.recipe.name]:
-                    if subtask in self.subtask_to_wrapper_dict:
-                        self.subtask_to_wrapper_dict[subtask].cnt += 1
-                    else:
-                        self.subtask_to_wrapper_dict[subtask] = ActionCntWrapper(
-                            subtask
-                        )
-
+        if self.subtask_removed or len(self.world.task_queue) != len(world.task_queue):
+            self.subtask_to_wrapper_dict = self.get_subtasks(world)
             self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
 
         self.world = copy.copy(world)
@@ -333,7 +258,9 @@ class RealAgent:
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
         if (self.subtask_removed) or (
             self.delegator.should_reset_priors(
-                obs=copy.copy(env), incomplete_subtasks=self.incomplete_subtasks
+                obs=copy.copy(env),
+                subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
+                incomplete_subtasks=self.incomplete_subtasks,
             )
         ):
             self.reset_subtasks()

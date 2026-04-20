@@ -484,8 +484,8 @@ class MeatPatty(Food):
 class Plate:
     def __init__(self):
         self.rep = "p"
-        self.name = "Plate0"
-        self.full_name = "Plate0"
+        self.name = "Plate"
+        self.full_name = "Plate"
         self.color = "white"
 
     def __hash__(self):

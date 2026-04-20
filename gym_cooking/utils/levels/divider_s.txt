@@ -2,8 +2,8 @@
 l  -  l
 t  *  t
 M  p  M
-P  p  P
-o  p  o
+P  -  P
+o  -  o
 -------
 
 Salad

@@ -139,7 +139,6 @@ class OvercookedEnvironment(gym.Env):
             # Mark the phases of reading.
             phase = 1
             agent_idx = 0
-            plate_cnt = 0
             for line in file:
                 line = line.strip("\n")
                 if line == "":
@@ -149,24 +148,13 @@ class OvercookedEnvironment(gym.Env):
                 elif phase == 1:
                     for x, rep in enumerate(line):
                         # Object, i.e. Tomato, Lettuce, Onion, Plate. Potato, MeatPatty.
-                        if rep in "tloPM":
+                        if rep in "tlopPM":
                             counter = Counter(location=(x, y))
                             obj = Object(location=(x, y), contents=RepToClass[rep]())
                             counter.acquire(obj=obj)
                             self.world.insert(obj=counter)
                             self.world.insert(obj=obj)
                             counter.is_dispenser = True
-
-                        elif rep in "p":
-                            counter = Counter(location=(x, y))
-                            obj = Object(location=(x, y), contents=RepToClass[rep]())
-                            obj.contents[0].name = f"Plate{plate_cnt}"
-                            obj.contents[0].full_name = f"Plate{plate_cnt}"
-                            obj.update_names()
-                            counter.acquire(obj=obj)
-                            self.world.insert(obj=counter)
-                            self.world.insert(obj=obj)
-                            plate_cnt += 1
 
                         # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
                         elif rep in RepToClass:
@@ -347,20 +335,15 @@ class OvercookedEnvironment(gym.Env):
 
         self.sw = STRIPSWorld(self.world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
-        subtasks_by_recipe = self.sw.get_subtasks(
+        subtask_cnts = self.sw.get_subtask_cnts(
             max_path_length=self.arglist.max_num_subtasks
         )
 
         all_subtasks = {}
-        for order in active_orders:
-            for subtask in subtasks_by_recipe[f"{order.recipe.name}"]:
-                if subtask in all_subtasks:
-                    all_subtasks[subtask].cnt += 1
-                else:
-                    all_subtasks[subtask] = recipe.ActionCntWrapper(subtask)
+        for subtask_cnt in subtask_cnts:
+            all_subtasks[subtask_cnt.action] = subtask_cnt
 
         print("All Subtasks:", [k for k in all_subtasks.keys()], "\n")
-
         return all_subtasks
 
     def add_order_to_queue(self):

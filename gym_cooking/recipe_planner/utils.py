@@ -61,11 +61,6 @@ class Merged(Predicate):
         Predicate.__init__(self, "Merged", (obj,))
 
 
-class Trashed(Predicate):
-    def __init__(self, obj):
-        Predicate.__init__(self, "Trashed", (obj,))
-
-
 # ACTIONS
 # -------------------------------------------------------------
 class ActionCntWrapper:
@@ -75,6 +70,12 @@ class ActionCntWrapper:
 
     def __str__(self):
         return f"{self.action}x{self.cnt}"
+
+    def __eq__(self, other):
+        return self.action == other.action and self.cnt == other.cnt
+
+    def __hash__(self):
+        return hash((self.action, self.cnt))
 
 
 class Action:
@@ -167,7 +168,7 @@ class Chop(Action):
         self.args = (obj,)
 
         self.pre_default = [Fresh(obj)]
-        self.post_add_default = [Chopped(obj)]
+        self.post_add_default = [Chopped(obj), Fresh(obj)]
 
         Action.__init__(self, "Chop", pre, post_add)
 
@@ -203,9 +204,13 @@ class Merge(Action):
         # sorted because it doesn't matter order of merging
 
         self.pre_default = [Chopped(arg1), Merged(arg2)]
+
         self.post_add_default = [
             Merged("-".join(sorted(arg1.split("-") + arg2.split("-"))))
         ]
+
+        if arg1 == "Plate" or arg2 == "Plate":
+            self.post_add_default.append(Fresh("Plate"))
 
         Action.__init__(self, "Merge", pre, post_add)
 
@@ -223,21 +228,6 @@ class Deliver(Action):
         self.pre_default = [Merged(obj)]
         self.post_add_default = [Delivered(obj)]
         Action.__init__(self, "Deliver", pre, post_add)
-
-
-"""
-Trash(X)
-Pre: Fresh(X), Chopped(obj), Cooked(obj), Merged(obj)
-Post: Trashed(X)
-"""
-
-
-class Trash(Action):
-    def __init__(self, obj, pre=None, post_add=None):
-        self.args = (obj,)
-        self.pre_default = [NoPredicate()]
-        self.post_add_default = [Trashed(obj)]
-        Action.__init__(self, "Trash", pre, post_add)
 
 
 # STRIPSSTATE
