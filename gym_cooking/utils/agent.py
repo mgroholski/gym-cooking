@@ -207,7 +207,7 @@ class RealAgent:
             # Refresh for incomplete subtasks.
             if self.subtask_complete:
                 if self.subtask in self.incomplete_subtasks:
-                    print(f"Non-Agent Remove: Removing {self.subtask}...")
+                    print(f"Agent Remove: Removing {self.subtask}...")
                     self.remove_subtask(self.subtask)
                     self.subtask_complete = True
 
