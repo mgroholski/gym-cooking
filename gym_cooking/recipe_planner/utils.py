@@ -185,7 +185,7 @@ class Cook(Action):
         self.args = (obj,)
 
         self.pre_default = [Fresh(obj)]
-        self.post_add_default = [Cooked(obj)]
+        self.post_add_default = [Cooked(obj), Fresh(obj)]
 
         Action.__init__(self, "Cook", pre, post_add)
 

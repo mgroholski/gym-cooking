@@ -29,7 +29,7 @@ def parse_arguments():
     parser.add_argument(
         "--max-num-subtasks",
         type=int,
-        default=14,
+        default=100,
         help="Max number of subtasks for recipe",
     )
     parser.add_argument("--seed", type=int, default=1, help="Fix pseudorandom seed")

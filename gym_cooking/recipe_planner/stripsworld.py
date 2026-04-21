@@ -105,15 +105,11 @@ class STRIPSWorld:
                 if subtask in action_path_dict:
                     action_path_dict[subtask].cnt += 1
                 else:
-                    action_path_dict[subtask] = recipe_utils.ActionCntWrapper(
-                        subtask
-                    )
+                    action_path_dict[subtask] = recipe_utils.ActionCntWrapper(subtask)
 
             union_action_path = union_action_path | set(action_path_dict.values())
 
-
         return union_action_path
-
 
     def check_goal(self, state):
         # check if this state satisfies completion of this recipe
