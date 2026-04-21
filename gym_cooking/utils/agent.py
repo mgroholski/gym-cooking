@@ -147,7 +147,7 @@ class RealAgent:
         if not len(active_tasks):
             return {}
 
-        recipes = [o.recipe for o in active_tasks]
+        recipes = [o.recipe for o in active_tasks if not o.is_complete]
         self.sw = STRIPSWorld(world, recipes)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
         subtask_cnts = self.sw.get_subtask_cnts(

@@ -27,6 +27,7 @@ from utils.interact import interact
 from utils.world import World
 
 CollisionRepr = namedtuple("CollisionRepr", "time agent_names agent_locations")
+HOLDING_PENALTY = 1.0
 
 
 class OvercookedEnvironment(gym.Env):
@@ -263,7 +264,7 @@ class OvercookedEnvironment(gym.Env):
         # Visualize.
         self.display()
         self.print_agents()
-        print(self.comms)
+        print("Communications: ", self.comms)
         if self.arglist.record:
             self.game.save_image_obs(self.t)
 
@@ -329,7 +330,7 @@ class OvercookedEnvironment(gym.Env):
         active_orders = self.task_queue
 
         if active_orders:
-            recipes = [o.recipe for o in active_orders]
+            recipes = [o.recipe for o in active_orders if not o.is_complete]
         else:
             return []
 
@@ -498,7 +499,6 @@ class OvercookedEnvironment(gym.Env):
 
         # Calculate extra holding penalty if the object is irrelevant.
         holding_penalty = 0.0
-        HOLDING_PENALTY = 2.0
         for agent in self.sim_agents:
             if agent.name in subtask_agent_names:
                 # Check for whether the agent is holding something.
