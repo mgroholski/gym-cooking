@@ -331,6 +331,8 @@ class OvercookedEnvironment(gym.Env):
 
         if active_orders:
             recipes = [o.recipe for o in active_orders if not o.is_complete]
+            if not len(recipes):
+                return []
         else:
             return []
 
