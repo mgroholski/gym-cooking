@@ -6,8 +6,8 @@ t  -  P
 -  -  o
 -----M-
 
-Salad
 OnionSalad
+Salad
 SimpleLettuce
 SimpleTomato
 
