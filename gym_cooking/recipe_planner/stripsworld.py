@@ -80,7 +80,7 @@ class STRIPSWorld:
             print("goal state could not be found, try increasing --max-num-subtasks")
             import sys
 
-            sys.exit(0)
+            sys.exit(1)
 
         return graph, goal_state
 
