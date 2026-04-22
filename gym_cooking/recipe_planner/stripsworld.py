@@ -21,11 +21,8 @@ class STRIPSWorld:
         # We need to edit this to consider object with other predicates than fresh.
         for obj in world.get_object_list():
             if isinstance(obj, Object):
-                """
-                if single object then
-                    if single object is plate -> Fresh(plate)
-                    otherwise single object is whichever state it's it
-                """
+                if obj.is_delivered:
+                    continue
                 if len(obj.contents) == 1:
                     content = obj.contents[0]
                     if isinstance(content, Plate):
