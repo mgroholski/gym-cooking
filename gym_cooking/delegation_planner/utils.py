@@ -12,7 +12,7 @@ class SubtaskAllocDistribution:
 
     def __init__(self, subtask_allocs):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
-        self.D = 50
+        self.D = 200
 
         self.probs = {}
         if len(subtask_allocs) == 0:
