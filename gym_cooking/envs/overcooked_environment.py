@@ -464,7 +464,7 @@ class OvercookedEnvironment(gym.Env):
         # combined together. These objects are all ingredient objects (e.g. Tomato, Lettuce).
         elif isinstance(subtask, recipe.Merge):
             A_locs = self.world.get_object_locs(
-                obj=start_obj, is_held=False, exclude_delivered=True
+                obj=start_obj[0], is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,
@@ -480,7 +480,7 @@ class OvercookedEnvironment(gym.Env):
                 )
             )
             B_locs = self.world.get_object_locs(
-                obj=start_obj, is_held=False, exclude_delivered=True
+                obj=start_obj[1], is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,
