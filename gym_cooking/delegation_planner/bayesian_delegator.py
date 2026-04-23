@@ -215,12 +215,6 @@ class BayesianDelegator(Delegator):
                             action_obj,
                         )
 
-                        # lb = self.get_lower_bound_for_subtask_alloc(
-                        #     obs=copy.copy(obs),
-                        #     task_alloc_p=some_probs.get(subtask_alloc),
-                        #     subtask=t.subtask,
-                        #     subtask_agent_names=t.subtask_agent_names,
-                        # )
                         total_weight += 1.0 / float(lb)
                     except Exception as e:
                         print(e)

@@ -61,7 +61,7 @@ def parse_arguments():
     parser.add_argument(
         "-r",
         type=float,
-        default=0.005,
+        default=0.2,
         help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
     )
 
@@ -69,7 +69,7 @@ def parse_arguments():
     parser.add_argument(
         "--epsilon",
         type=float,
-        default=0.3,
+        default=1,
         help="The factor that the task allocation is believed to increase by.",
     )
 

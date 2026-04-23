@@ -570,7 +570,7 @@ class E2E_BRTDP:
         else:
             lower = (
                 1 / task_alloc_p
-            ) + env_state.get_lower_bound_for_subtask_given_objs(
+            ) * env_state.get_lower_bound_for_subtask_given_objs(
                 subtask=self.subtask,
                 subtask_agent_names=self.subtask_agent_names,
                 start_obj=self.start_obj,
