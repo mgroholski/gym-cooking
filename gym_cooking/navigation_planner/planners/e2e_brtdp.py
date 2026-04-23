@@ -565,34 +565,30 @@ class E2E_BRTDP:
             self.v_u[((es_repr, task_alloc_p), self.subtask)] = 0.0
             return
 
-        # Determine lower bound on this environment state.
-        lower_heur = env_state.get_lower_bound_for_subtask_given_objs(
-            subtask=self.subtask,
-            subtask_agent_names=self.subtask_agent_names,
-            start_obj=self.start_obj,
-            goal_obj=self.goal_obj,
-            subtask_action_obj=self.subtask_action_obj,
-        )
-
-        lower_heur = lower_heur * (self.time_cost + self.action_cost)
-
-        # By BRTDP assumption, this should never be negative.
-        assert lower_heur > 0, "lower: {}, {}, {}".format(
-            lower_heur, env_state.display(), env_state.print_agents()
-        )
-
-        lower_heur -= 1.09
-        upper_heur = lower_heur * 5 * (self.time_cost + self.action_cost)
-
         if task_alloc_p == 0:
             lower = float("inf")
-            upper = float("inf")
         else:
-            lower = (1 / task_alloc_p) * lower_heur
-            upper = (1 / task_alloc_p) * upper_heur
+            lower = (
+                1 / task_alloc_p
+            ) + env_state.get_lower_bound_for_subtask_given_objs(
+                subtask=self.subtask,
+                subtask_agent_names=self.subtask_agent_names,
+                start_obj=self.start_obj,
+                goal_obj=self.goal_obj,
+                subtask_action_obj=self.subtask_action_obj,
+            )
 
-        self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower
-        self.v_u[((es_repr, task_alloc_p), self.subtask)] = upper
+        lower = lower * (self.time_cost + self.action_cost)
+
+        # By BRTDP assumption, this should never be negative.
+        assert lower > 0, "lower: {}, {}, {}".format(
+            lower, env_state.display(), env_state.print_agents()
+        )
+
+        self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower - 1.09
+        self.v_u[((es_repr, task_alloc_p), self.subtask)] = (
+            lower * 5 * (self.time_cost + self.action_cost)
+        )
 
     def Q(self, state, task_alloc_p, action, value_f):
         """Get Q value using value_f of (state, action)."""

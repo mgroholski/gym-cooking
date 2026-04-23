@@ -175,6 +175,7 @@ ObjectRepr = namedtuple("ObjectRepr", "name location is_held is_delivered")
 class Object:
     def __init__(self, location, contents):
         self.location = location
+
         self.contents = contents if isinstance(contents, list) else [contents]
         self.is_held = False
         self.update_names()
@@ -346,7 +347,11 @@ class Food:
     #     return hash((self.state, self.name))
 
     def __eq__(self, other):
-        return isinstance(other, Food) and self.get_state() == other.get_state()
+        return (
+            isinstance(other, Food)
+            and self.get_state() == other.get_state()
+            and self.name == other.name
+        )
 
     def __len__(self):
         return 1  # one food unit

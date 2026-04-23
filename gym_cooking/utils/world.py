@@ -346,6 +346,18 @@ class World:
 
         return False
 
+    def get_all_non_delivered_object_locs(self, obj, is_held):
+        if is_held:
+            return self.get_object_locs(obj=obj, is_held=True)
+        else:
+            unheld_locs = set(self.get_object_locs(obj=obj, is_held=False))
+            non_delivered_unheld_locs = [
+                loc
+                for loc in unheld_locs
+                if not self.get_object_at(loc, obj, False, False).is_delivered
+            ]
+            return non_delivered_unheld_locs
+
     def get_object_locs(self, obj, is_held):
         if obj.name not in self.objects.keys():
             return []
@@ -378,7 +390,7 @@ class World:
             )
         )
 
-    def get_object_at(self, location, desired_obj, find_held_objects):
+    def get_object_at(self, location, desired_obj, find_held_objects, duplicate=True):
         # Map obj => location => filter by location => return that object.
         all_objs = self.get_object_list()
 
@@ -407,11 +419,11 @@ class World:
             )
 
         assert len(objs) == 1, "looking for {}, found {} at {}".format(
-            desired_obj, ",".join(o.get_name() for o in objs), location
+            desired_obj, ",".join(o.name for o in objs), location
         )
 
         gs = self.get_gridsquare_at(location)
-        if gs.is_dispenser and not (gs.cnt is not None and gs.cnt == 1):
+        if duplicate and gs.is_dispenser and not (gs.cnt is not None and gs.cnt == 1):
             obj_copy = copy.deepcopy(objs[0])
             self.insert(obj_copy)
             return obj_copy

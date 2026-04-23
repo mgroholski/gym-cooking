@@ -178,7 +178,7 @@ class Recipe:
                                 f"Could not find mergable predicate for {new_item.name}."
                             )
 
-                        self.actions.add(
+                        self.actions.add(  # Lettuce - Tomato, Tomato - Lettuce
                             recipe.Merge(
                                 new_item.name,
                                 rem_str,
@@ -186,7 +186,7 @@ class Recipe:
                                 None,
                             )
                         )
-                        self.actions.add(
+                        self.actions.add(  # Tomato, Lettuce-Plate and Lettuce, Tomato-Plate
                             recipe.Merge(
                                 rem_str,
                                 plate_str,
@@ -194,7 +194,7 @@ class Recipe:
                                 None,
                             )
                         )
-                        self.actions.add(
+                        self.actions.add(  # Lettuce, Lettuce-Plate and Tomato, Tomato-Plate
                             recipe.Merge(
                                 new_item.name,
                                 plate_str,
