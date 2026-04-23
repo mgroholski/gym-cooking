@@ -636,7 +636,7 @@ class OvercookedEnvironment(gym.Env):
         if self.arglist.partially_observable:
             new_order_prob = self.arglist.r
             if len(self.hidden_task_queue) and (
-                (any([(not o.is_complete) for o in self.task_queue]))
+                (all([(o.is_complete) for o in self.task_queue]))
                 or (np.random.random() < new_order_prob)
             ):
                 self.add_order_to_queue()
