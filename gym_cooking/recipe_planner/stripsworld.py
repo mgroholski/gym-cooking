@@ -50,10 +50,10 @@ class STRIPSWorld:
         frontier = set([self.initial])
         next_frontier = set()
 
+        visited = set([self.initial])
+
         for i in range(max_path_length):
             # print("CHECKING FRONTIER #:", i)
-            # if i > 5:
-            #     breakpoint()
             for state in frontier:
                 # for each action, check whether from this state
                 for action in all_actions:
@@ -69,9 +69,12 @@ class STRIPSWorld:
                             goal_state = next_state
                             return graph, goal_state
 
-                        next_frontier.add(next_state)
+                        if next_state not in visited:
+                            visited.add(next_state)
+                            next_frontier.add(next_state)
 
-            frontier = next_frontier.copy()
+            frontier = next_frontier
+            next_frontier = set()
 
         if goal_state is None:
             print("goal state could not be found, try increasing --max-num-subtasks")

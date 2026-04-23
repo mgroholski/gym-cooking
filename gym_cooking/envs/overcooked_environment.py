@@ -394,8 +394,8 @@ class OvercookedEnvironment(gym.Env):
         # chopped and the cutting board objects.
         if isinstance(subtask, recipe.Chop):
             # A: Object that can be chopped.
-            A_locs = self.world.get_all_non_delivered_object_locs(
-                obj=start_obj, is_held=False
+            A_locs = self.world.get_object_locs(
+                obj=start_obj, is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,
@@ -417,8 +417,8 @@ class OvercookedEnvironment(gym.Env):
         # cooked and the cooking objects.
         elif isinstance(subtask, recipe.Cook):
             # A: Object that can be cooked.
-            A_locs = self.world.get_all_non_delivered_object_locs(
-                obj=start_obj, is_held=False
+            A_locs = self.world.get_object_locs(
+                obj=start_obj, is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,
@@ -443,8 +443,8 @@ class OvercookedEnvironment(gym.Env):
             B_locs = self.world.get_all_object_locs(obj=subtask_action_obj)
 
             # A: Object that can be delivered.
-            A_locs = self.world.get_all_non_delivered_object_locs(
-                obj=start_obj, is_held=False
+            A_locs = self.world.get_object_locs(
+                obj=start_obj, is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,
@@ -463,8 +463,8 @@ class OvercookedEnvironment(gym.Env):
         # For Merge operator on Merge subtasks, we look at objects that can be
         # combined together. These objects are all ingredient objects (e.g. Tomato, Lettuce).
         elif isinstance(subtask, recipe.Merge):
-            A_locs = self.world.get_all_non_delivered_object_locs(
-                obj=start_obj[0], is_held=False
+            A_locs = self.world.get_object_locs(
+                obj=start_obj, is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,
@@ -479,8 +479,8 @@ class OvercookedEnvironment(gym.Env):
                     ),
                 )
             )
-            B_locs = self.world.get_all_non_delivered_object_locs(
-                obj=start_obj[1], is_held=False
+            B_locs = self.world.get_object_locs(
+                obj=start_obj, is_held=False, exclude_delivered=True
             ) + list(
                 map(
                     lambda a: a.location,

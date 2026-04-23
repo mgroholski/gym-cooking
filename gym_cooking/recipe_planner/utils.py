@@ -1,5 +1,5 @@
 import copy
-from collections import defaultdict
+from collections import Counter, defaultdict
 from itertools import combinations
 
 import matplotlib.pyplot as plt
@@ -234,7 +234,13 @@ class Deliver(Action):
 # --------------------------------------------------------------
 class STRIPSState:
     def __init__(self):
-        self.predicates = []  # can have multiple same predicates
+        self.predicates = []
+        self._hash = None
+
+    def __hash__(self):
+        if self._hash is None:
+            self._hash = hash(tuple(sorted(str(p) for p in self.predicates)))
+        return self._hash
 
     def __str__(self):
         return "[{}]".format(", ".join([str(p) for p in self.predicates]))
@@ -242,12 +248,7 @@ class STRIPSState:
     def __eq__(self, other):
         if other is None:
             return False
-        return sorted([str(p) for p in self.predicates]) == sorted(
-            [str(p) for p in other.predicates]
-        )
-
-    def __hash__(self):
-        return hash(tuple(sorted([str(p) for p in self.predicates])))
+        return Counter(self.predicates) == Counter(other.predicates)
 
     def __copy__(self):
         new = STRIPSState()
@@ -255,10 +256,12 @@ class STRIPSState:
         return new
 
     def add_predicate(self, predicate):
+        self._hash = None
         self.predicates.append(predicate)
 
     def delete_predicate(self, predicate):
         assert predicate in self.predicates, "{} not in this state".format(predicate)
+        self._hash = None
         self.predicates.remove(predicate)  # remove first instance
 
     def contains(self, predicate):
