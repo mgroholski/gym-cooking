@@ -104,7 +104,10 @@ class E2E_BRTDP:
 
         sim_task_alloc_p = task_alloc_p
 
-        if action == nav_utils.COMM_ACTION:
+        if (isinstance(action[0], int) and action == nav_utils.COMM_ACTION) or (
+            isinstance(action[0], tuple)
+            and any([a == nav_utils.COMM_ACTION for a in action])
+        ):
             sim_task_alloc_p = min(1.0, sim_task_alloc_p + self.epsilon)
 
         # Single agent
