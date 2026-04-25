@@ -567,26 +567,23 @@ class E2E_BRTDP:
             self.v_l[((es_repr, task_alloc_p), self.subtask)] = 0.0
             self.v_u[((es_repr, task_alloc_p), self.subtask)] = 0.0
             return
-
-        if task_alloc_p == 0:
-            lower = float("inf")
-        else:
-            lower = env_state.get_lower_bound_for_subtask_given_objs(
-                subtask=self.subtask,
-                subtask_agent_names=self.subtask_agent_names,
-                start_obj=self.start_obj,
-                goal_obj=self.goal_obj,
-                subtask_action_obj=self.subtask_action_obj,
-            )
-
-        lower = lower * (self.time_cost + self.action_cost)
+        lower = env_state.get_lower_bound_for_subtask_given_objs(
+            subtask=self.subtask,
+            subtask_agent_names=self.subtask_agent_names,
+            start_obj=self.start_obj,
+            goal_obj=self.goal_obj,
+            subtask_action_obj=self.subtask_action_obj,
+        ) * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
         assert lower > 0, "lower: {}, {}, {}".format(
             lower, env_state.display(), env_state.print_agents()
         )
 
-        task_alloc_term = 1 / task_alloc_p
+        if task_alloc_p != 0:
+            task_alloc_term = 1 / task_alloc_p
+        else:
+            task_alloc_term = float("inf")
 
         self.v_l[((es_repr, task_alloc_p), self.subtask)] = (
             lower - 1.09
