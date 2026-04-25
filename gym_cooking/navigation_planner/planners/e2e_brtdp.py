@@ -567,37 +567,35 @@ class E2E_BRTDP:
             self.v_l[((es_repr, task_alloc_p), self.subtask)] = 0.0
             self.v_u[((es_repr, task_alloc_p), self.subtask)] = 0.0
             return
-        lower = env_state.get_lower_bound_for_subtask_given_objs(
+
+        # Determine lower bound on this environment state.
+        lower_heur = env_state.get_lower_bound_for_subtask_given_objs(
             subtask=self.subtask,
             subtask_agent_names=self.subtask_agent_names,
             start_obj=self.start_obj,
             goal_obj=self.goal_obj,
             subtask_action_obj=self.subtask_action_obj,
-        ) * (self.time_cost + self.action_cost)
-
-        # By BRTDP assumption, this should never be negative.
-        assert lower > 0, "lower: {}, {}, {}".format(
-            lower, env_state.display(), env_state.print_agents()
         )
 
-        if not np.isfinite(task_alloc_p):
-            print("bad task_alloc_p ", task_alloc_p, env_state)
-            import traceback
+        lower_heur = lower_heur * (self.time_cost + self.action_cost)
 
-            traceback.print_stack()
-            exit(1)
+        # By BRTDP assumption, this should never be negative.
+        assert lower_heur > 0, "lower: {}, {}, {}".format(
+            lower_heur, env_state.display(), env_state.print_agents()
+        )
 
-        if task_alloc_p != 0:
-            task_alloc_term = 1 / task_alloc_p
+        upper_heur = lower_heur * 5 * (self.time_cost + self.action_cost)
+        lower_heur -= 1.09
+
+        if task_alloc_p == 0:
+            lower = float("inf")
+            upper = float("inf")
         else:
-            task_alloc_term = float("inf")
+            lower = (1 / task_alloc_p) * lower_heur
+            upper = (1 / task_alloc_p) * upper_heur
 
-        self.v_l[((es_repr, task_alloc_p), self.subtask)] = (
-            lower - 1.09
-        ) * task_alloc_term
-        self.v_u[((es_repr, task_alloc_p), self.subtask)] = (
-            lower * 5 * (self.time_cost + self.action_cost)
-        ) * task_alloc_term
+        self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower
+        self.v_u[((es_repr, task_alloc_p), self.subtask)] = upper
 
     def Q(self, state, task_alloc_p, action, value_f):
         """Get Q value using value_f of (state, action)."""
