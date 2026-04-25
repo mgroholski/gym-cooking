@@ -580,6 +580,13 @@ class E2E_BRTDP:
             lower, env_state.display(), env_state.print_agents()
         )
 
+        if not np.isfinite(task_alloc_p):
+            print("bad task_alloc_p ", task_alloc_p, env_state)
+            import traceback
+
+            traceback.print_stack()
+            exit(1)
+
         if task_alloc_p != 0:
             task_alloc_term = 1 / task_alloc_p
         else:
