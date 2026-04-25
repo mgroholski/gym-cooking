@@ -571,9 +571,7 @@ class E2E_BRTDP:
         if task_alloc_p == 0:
             lower = float("inf")
         else:
-            lower = (
-                1 / task_alloc_p
-            ) * env_state.get_lower_bound_for_subtask_given_objs(
+            lower = env_state.get_lower_bound_for_subtask_given_objs(
                 subtask=self.subtask,
                 subtask_agent_names=self.subtask_agent_names,
                 start_obj=self.start_obj,
@@ -588,10 +586,14 @@ class E2E_BRTDP:
             lower, env_state.display(), env_state.print_agents()
         )
 
-        self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower - 1.09
+        task_alloc_term = 1 / task_alloc_p
+
+        self.v_l[((es_repr, task_alloc_p), self.subtask)] = (
+            lower - 1.09
+        ) * task_alloc_term
         self.v_u[((es_repr, task_alloc_p), self.subtask)] = (
             lower * 5 * (self.time_cost + self.action_cost)
-        )
+        ) * task_alloc_term
 
     def Q(self, state, task_alloc_p, action, value_f):
         """Get Q value using value_f of (state, action)."""
