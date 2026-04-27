@@ -51,24 +51,18 @@ class SubtaskAllocDistribution:
         log_p = max(log_p, NEG_INF_LOG_VAL)
         p = np.exp(log_p)
 
-        # Discretize to a factor of D
-        p_discrete = np.round(p * self.D) / float(self.D)
-        return float(np.clip(p_discrete, 0.0, 1.0))
+        return p
 
     def get_max(self):
-        try:
-            if len(self.probs) > 0:
-                max_prob = max(self.probs.values())
-                max_subtask_allocs = [
-                    subtask_alloc
-                    for subtask_alloc, p in self.probs.items()
-                    if p == max_prob
-                ]
-                return random.choice(max_subtask_allocs)
-            return None
-        except Exception as e:
-            print(e)
-            breakpoint()
+        if len(self.probs) > 0:
+            max_prob = max(self.probs.values())
+            max_subtask_allocs = [
+                subtask_alloc
+                for subtask_alloc, p in self.probs.items()
+                if p == max_prob
+            ]
+            return random.choice(max_subtask_allocs)
+        return None
 
     def get_best_containing(self, subtask):
         """Return max likelihood subtask_alloc that contains the given subtask."""
