@@ -18,9 +18,8 @@ from utils.interact import interact
 # Other core modules
 from utils.world import World
 
+
 # Navigation planning
-
-
 class PlannerLevel(Enum):
     LEVEL1 = 1
     LEVEL0 = 0
@@ -587,12 +586,9 @@ class E2E_BRTDP:
         upper_heur = lower_heur * 5 * (self.time_cost + self.action_cost)
         lower_heur -= 1.09
 
-        if task_alloc_p == 0:
-            lower = float("inf")
-            upper = float("inf")
-        else:
-            lower = (1 / task_alloc_p) * lower_heur
-            upper = (1 / task_alloc_p) * upper_heur
+        task_alloc_p = max(task_alloc_p, 1e-12)
+        lower = lower_heur - np.log(task_alloc_p)
+        upper = upper_heur - np.log(task_alloc_p)
 
         self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower
         self.v_u[((es_repr, task_alloc_p), self.subtask)] = upper
