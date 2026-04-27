@@ -27,7 +27,6 @@ class PlannerLevel(Enum):
 
 def argmin(vector):
     e_x = np.array(vector) == min(vector)
-
     return np.where(np.random.multinomial(1, e_x / e_x.sum()))[0][0]
 
 
