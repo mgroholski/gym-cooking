@@ -586,9 +586,11 @@ class E2E_BRTDP:
         upper_heur = lower_heur * 5 * (self.time_cost + self.action_cost)
         lower_heur -= 1.09
 
-        task_alloc_p = max(task_alloc_p, 1e-12)
-        lower = lower_heur - np.log(task_alloc_p)
-        upper = upper_heur - np.log(task_alloc_p)
+        task_alloc_p_term = -(
+            (env_state.world.perimeter + 1) * np.log(max(task_alloc_p, 1e-12))
+        )
+        lower = lower_heur + task_alloc_p_term
+        upper = upper_heur + task_alloc_p_term
 
         self.v_l[((es_repr, task_alloc_p), self.subtask)] = lower
         self.v_u[((es_repr, task_alloc_p), self.subtask)] = upper
