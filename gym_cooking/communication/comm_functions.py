@@ -38,6 +38,7 @@ class CommunicationFunctions:
             self.listen_prompt_template = self.LISTEN_PROMPT_PATH.read_text()
 
     def speak(self, name, obs, task_allocation):
+
         if self.speak_prompt_template is None:
             raise FileNotFoundError(
                 f"Prompt file not found at {self.SPEAK_PROMPT_PATH}"

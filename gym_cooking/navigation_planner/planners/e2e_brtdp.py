@@ -627,7 +627,7 @@ class E2E_BRTDP:
         for a in action:
             if a != (0, 0) and a != nav_utils.COMM_ACTION:
                 cost += self.action_cost
-            if a == nav_utils.COMM_ACTION:
+            elif a == nav_utils.COMM_ACTION:
                 cost += self.comm_cost
 
         return cost

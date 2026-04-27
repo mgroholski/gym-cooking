@@ -126,14 +126,14 @@ class RealAgent:
         )
         self.plan(copy.copy(obs))
 
-        if self.new_task_alloc is not None:
-            self.task_alloc_p_tm1 = self.delegator.probs.get(self.new_task_alloc)
+        if self.task_alloc is not None:
+            self.task_alloc_p_tm1 = self.delegator.probs.get(self.task_alloc)
         else:
             self.task_alloc_p_tm1 = 1
 
         comm = None
         if self.action == nav_utils.COMM_ACTION:
-            comm = self.generate_communication(obs, self.new_task_alloc)
+            comm = self.generate_communication(obs, self.task_alloc)
         return self.action, comm
 
     def generate_communication(self, obs, task_alloc):
@@ -382,6 +382,7 @@ class RealAgent:
         # Update subtask.
         self.subtask = self.new_subtask
         self.subtask_agent_names = self.new_subtask_agent_names
+        self.task_alloc = self.new_task_alloc
         self.new_subtask = None
         self.new_task_alloc = None
         self.new_subtask_agent_names = []

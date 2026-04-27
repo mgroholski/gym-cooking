@@ -57,16 +57,25 @@ class SubtaskAllocDistribution:
             self.discretized_probs = {}
             return
 
-        log_probs = list(self.probs.values())
-        log_probs = [max(lp, NEG_INF_LOG_VAL) for lp in log_probs]
-        probs = np.exp(log_probs)
+        log_probs = np.array(list(self.probs.values()), dtype=float)
+        log_probs = np.where(np.isfinite(log_probs), log_probs, -np.inf)
 
-        discretized = np.round(probs * self.D) / self.D
-        total = float(np.sum(discretized))
-        if total <= 0:
-            discretized = np.full_like(discretized, 1.0 / len(discretized))
+        max_log_prob = np.max(log_probs)
+        if not np.isfinite(max_log_prob):
+            discretized = np.full_like(log_probs, 1.0 / len(log_probs), dtype=float)
         else:
-            discretized = discretized / total
+            cutoff_log_prob = max_log_prob + np.log(1e-6)
+            rel_probs = np.exp(log_probs - max_log_prob)
+            rel_probs[log_probs < cutoff_log_prob] = 0.0
+
+            discretized = np.round(rel_probs * self.D) / self.D
+            total = float(np.sum(discretized))
+            if total <= 0:
+                max_index = int(np.argmax(log_probs))
+                discretized = np.zeros_like(discretized)
+                discretized[max_index] = 1.0
+            else:
+                discretized = discretized / total
 
         self.discretized_probs = {
             subtask_alloc: float(p)
