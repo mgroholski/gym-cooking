@@ -61,7 +61,7 @@ def parse_arguments():
     parser.add_argument(
         "-r",
         type=float,
-        default=0.2,
+        default=0.07,
         help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
     )
 
