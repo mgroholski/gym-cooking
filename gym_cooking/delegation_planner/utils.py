@@ -45,7 +45,8 @@ class SubtaskAllocDistribution:
         return list(self.probs.items())
 
     def get(self, subtask_alloc):
-        return self.probs[tuple(subtask_alloc)]
+        log_p = self.probs[tuple(subtask_alloc)]
+        return np.exp(log_p)
 
     def get_max(self):
         if len(self.probs) > 0:
@@ -88,3 +89,18 @@ class SubtaskAllocDistribution:
             self.probs[subtask_alloc] -= log_total
 
         return self.probs
+
+    def get_entropy(self):
+        entropy = 0
+        for log_p in self.probs.values():
+            p = np.exp(log_p)
+            entropy += p * log_p
+
+        return -entropy
+
+    def get_max_entropy(self):
+        n = len(self.probs)
+        if not n:
+            raise Exception("0 probs in distribution.")
+
+        return np.log(n)

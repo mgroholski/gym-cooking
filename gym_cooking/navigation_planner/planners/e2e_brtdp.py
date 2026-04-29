@@ -42,7 +42,7 @@ class E2E_BRTDP:
     paper: http://www.cs.cmu.edu/~ggordon/mcmahan-likhachev-gordon.brtdp.pdf
     """
 
-    def __init__(self, alpha, tau, cap, main_cap, epsilon, can_communicate):
+    def __init__(self, alpha, tau, cap, main_cap):
         """
         Initializes BRTDP algorithm with its hyper-parameters.
         Rf. BRTDP paper for how these hyper-parameters are used in their
@@ -60,9 +60,6 @@ class E2E_BRTDP:
         self.tau = tau
         self.cap = cap
         self.main_cap = main_cap
-
-        self.epsilon = epsilon
-        self.can_communicate = can_communicate
 
         self.v_l = {}
         self.v_u = {}
@@ -88,8 +85,6 @@ class E2E_BRTDP:
             tau=self.tau,
             cap=self.cap,
             main_cap=self.main_cap,
-            epsilon=self.epsilon,
-            can_communicate=self.can_communicate,
         )
         copy_.__dict__ = self.__dict__.copy()
         return copy_
@@ -146,20 +141,14 @@ class E2E_BRTDP:
         # Return single-agent actions.
         if not self.is_joint:
             agent = subtask_agents[0]
-            output_actions = nav_utils.get_single_actions(
-                env=state, agent=agent, can_communicate=self.can_communicate
-            )
+            output_actions = nav_utils.get_single_actions(env=state, agent=agent)
         # Return joint-agent actions.
         else:
             agent_1, agent_2 = subtask_agents
             valid_actions = list(
                 product(
-                    nav_utils.get_single_actions(
-                        env=state, agent=agent_1, can_communicate=self.can_communicate
-                    ),
-                    nav_utils.get_single_actions(
-                        env=state, agent=agent_2, can_communicate=self.can_communicate
-                    ),
+                    nav_utils.get_single_actions(env=state, agent=agent_1),
+                    nav_utils.get_single_actions(env=state, agent=agent_2),
                 )
             )
             # Only consider action to be valid if agents do not collide.
