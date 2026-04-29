@@ -103,4 +103,4 @@ class SubtaskAllocDistribution:
         if not n:
             raise Exception("0 probs in distribution.")
 
-        return np.log((1 / n))
+        return np.log(n)
