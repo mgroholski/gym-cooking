@@ -588,6 +588,7 @@ class E2E_BRTDP:
         task_alloc_p_term = -(
             (env_state.world.perimeter + 1) * np.log(max(task_alloc_p, 1e-12))
         )
+
         lower = lower_heur + task_alloc_p_term
         upper = upper_heur + task_alloc_p_term
 
