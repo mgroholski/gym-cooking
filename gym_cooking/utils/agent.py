@@ -115,21 +115,14 @@ class RealAgent:
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)
-        self.new_subtask, self.new_subtask_agent_names, self.new_task_alloc = (
-            self.delegator.select_subtask(
-                agent_name=self.name,
-            )
+        self.new_subtask, self.new_subtask_agent_names = self.delegator.select_subtask(
+            agent_name=self.name,
         )
 
         print(
             f"Post-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}"
         )
         self.plan(copy.copy(obs))
-
-        if self.task_alloc is not None:
-            self.task_alloc_p_tm1 = self.delegator.probs.get(self.task_alloc)
-        else:
-            self.task_alloc_p_tm1 = 1
 
         comm = None
         if self.action == nav_utils.COMM_ACTION:

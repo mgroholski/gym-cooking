@@ -125,9 +125,7 @@ class BayesianDelegator(Delegator):
         # Subtask allocation is doable if it's reachable between agents and subtask objects.
         return distance < env.world.perimeter
 
-    def get_lower_bound_for_subtask_alloc(
-        self, obs, task_alloc_p, subtask, subtask_agent_names
-    ):
+    def get_lower_bound_for_subtask_alloc(self, obs, subtask, subtask_agent_names):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
         if subtask is None:
@@ -136,14 +134,11 @@ class BayesianDelegator(Delegator):
 
         _ = self.planner.get_next_action(
             env=obs,
-            task_alloc_p=task_alloc_p,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners={},
         )
-        value = self.planner.v_l[
-            ((self.planner.cur_state.get_repr(), task_alloc_p), subtask)
-        ]
+        value = self.planner.v_l[((self.planner.cur_state.get_repr()), subtask)]
 
         return value
 
@@ -241,7 +236,7 @@ class BayesianDelegator(Delegator):
             if other_agent_name != self.agent_name:
                 # Get most likely subtask and subtask agents for other agent
                 # based on my beliefs.
-                subtask, subtask_agent_names, max_task_alloc = self.select_subtask(
+                subtask, subtask_agent_names = self.select_subtask(
                     agent_name=other_agent_name
                 )
 
@@ -256,7 +251,6 @@ class BayesianDelegator(Delegator):
                 planner = copy.copy(self.planner)
                 planner.set_settings(
                     env=copy.copy(obs),
-                    task_alloc_p=self.probs.get(max_task_alloc),
                     subtask=subtask,
                     subtask_agent_names=subtask_agent_names,
                 )
@@ -264,7 +258,7 @@ class BayesianDelegator(Delegator):
         return planners
 
     def get_appropriate_state_and_other_agent_planners(
-        self, obs_tm1, task_alloc_p_tm1, backup_subtask, no_level_1
+        self, obs_tm1, backup_subtask, no_level_1
     ):
         """Return Level 1 planner if no_level_1 is False, otherwise
         return a Level 0 Planner."""
@@ -272,27 +266,23 @@ class BayesianDelegator(Delegator):
         if no_level_1:
             # Level 0 planning: Just use obs_tm1.
             state = obs_tm1
-            task_alloc_p = task_alloc_p_tm1
             # Assume other agents are fixed.
             other_planners = {}
         else:
             # Level 1 planning: Modify the state according to my beliefs.
-            state, task_alloc_p, _ = (
-                self.planner._get_modified_state_with_other_agent_actions(
-                    state=obs_tm1, task_alloc_p=task_alloc_p_tm1
-                )
+            state, _ = self.planner._get_modified_state_with_other_agent_actions(
+                state=obs_tm1
             )
             # Get other agent planners under my current beliefs.
             other_planners = self.get_other_agent_planners(
                 obs=obs_tm1,
                 backup_subtask=backup_subtask,
             )
-        return state, task_alloc_p, other_planners
+        return state, other_planners
 
     def prob_nav_actions(
         self,
         obs_tm1,
-        task_alloc_p_tm1,
         actions_tm1,
         subtask,
         subtask_agent_names,
@@ -359,7 +349,6 @@ class BayesianDelegator(Delegator):
         state, task_alloc_p, other_planners = (
             self.get_appropriate_state_and_other_agent_planners(
                 obs_tm1=obs_tm1,
-                task_alloc_p_tm1=task_alloc_p_tm1,
                 backup_subtask=subtask,
                 no_level_1=no_level_1,
             )
@@ -367,14 +356,12 @@ class BayesianDelegator(Delegator):
 
         self.planner.set_settings(
             env=obs_tm1,
-            task_alloc_p=task_alloc_p_tm1,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_planners,
         )
         old_q = self.planner.Q(
             state=state,
-            task_alloc_p=task_alloc_p,
             action=action,
             value_f=self.planner.v_l,
         )
@@ -406,7 +393,6 @@ class BayesianDelegator(Delegator):
             old_q
             - self.planner.Q(
                 state=state,
-                task_alloc_p=task_alloc_p,
                 action=nav_action,
                 value_f=self.planner.v_l,
             )
@@ -605,8 +591,8 @@ class BayesianDelegator(Delegator):
         if max_subtask_alloc is not None:
             for t in max_subtask_alloc:
                 if agent_name in t.subtask_agent_names:
-                    return t.subtask, t.subtask_agent_names, max_subtask_alloc
-        return (None, agent_name, None)
+                    return t.subtask, t.subtask_agent_names
+        return (None, agent_name)
 
     def ensure_at_least_one_subtask(self):
         # Make sure each agent has None task by itself.
@@ -650,9 +636,9 @@ class BayesianDelegator(Delegator):
         if comm_info is not None:
             speaking_agents_t = set([k for k in comm_info.keys()])
 
+        # TODO: EDIT
         for task_alloc in ta_set:
             update = 0.0
-            task_alloc_p_tm1 = probs_tm1.get(task_alloc)
             for t in task_alloc:
                 for subtask_agent_name in t.subtask_agent_names:
                     agent_subtask_alloc_tm1 = task_alloc_p_tm1
@@ -679,7 +665,6 @@ class BayesianDelegator(Delegator):
 
                     p = self.prob_nav_actions(
                         obs_tm1=copy.copy(obs_tm1),
-                        task_alloc_p_tm1=agent_subtask_alloc_tm1,
                         actions_tm1=actions_tm1,
                         subtask=t.subtask,
                         subtask_agent_names=t.subtask_agent_names,
