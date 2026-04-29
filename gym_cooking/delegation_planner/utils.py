@@ -12,13 +12,10 @@ class SubtaskAllocDistribution:
 
     def __init__(self, subtask_allocs):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
-        self.D = 200
 
         self.probs = {}
         if len(subtask_allocs) == 0:
             return
-
-        self.discretized_probs = None
 
         prior = np.log(1.0 / (len(subtask_allocs)))
         print("set prior", prior)
@@ -39,8 +36,6 @@ class SubtaskAllocDistribution:
     def __copy__(self):
         new = self.__class__.__new__(self.__class__)
         new.probs = copy.deepcopy(self.probs)
-        new.D = self.D
-        new.discretized_probs = self.discretized_probs
         return new
 
     def enumerate_subtask_allocs(self):
@@ -49,42 +44,9 @@ class SubtaskAllocDistribution:
     def get_list(self):
         return list(self.probs.items())
 
-    def _ensure_discretized_probs(self):
-        if self.discretized_probs is not None:
-            return
-
-        if len(self.probs) == 0:
-            self.discretized_probs = {}
-            return
-
-        log_probs = np.array(list(self.probs.values()), dtype=float)
-        log_probs = np.where(np.isfinite(log_probs), log_probs, -np.inf)
-
-        max_log_prob = np.max(log_probs)
-        if not np.isfinite(max_log_prob):
-            discretized = np.full_like(log_probs, 1.0 / len(log_probs), dtype=float)
-        else:
-            cutoff_log_prob = max_log_prob + np.log(1e-6)
-            rel_probs = np.exp(log_probs - max_log_prob)
-            rel_probs[log_probs < cutoff_log_prob] = 0.0
-
-            discretized = np.round(rel_probs * self.D) / self.D
-            total = float(np.sum(discretized))
-            if total <= 0:
-                max_index = int(np.argmax(log_probs))
-                discretized = np.zeros_like(discretized)
-                discretized[max_index] = 1.0
-            else:
-                discretized = discretized / total
-
-        self.discretized_probs = {
-            subtask_alloc: float(p)
-            for subtask_alloc, p in zip(self.probs.keys(), discretized)
-        }
-
     def get(self, subtask_alloc):
-        self._ensure_discretized_probs()
-        return self.discretized_probs[tuple(subtask_alloc)]
+        log_p = self.probs[tuple(subtask_alloc)]
+        return np.exp(log_p)
 
     def get_max(self):
         if len(self.probs) > 0:
@@ -109,15 +71,12 @@ class SubtaskAllocDistribution:
 
     def set(self, subtask_alloc, value):
         self.probs[tuple(subtask_alloc)] = value
-        self.discretized_probs = None
 
     def update(self, subtask_alloc, factor):
         self.probs[tuple(subtask_alloc)] += factor
-        self.discretized_probs = None
 
     def delete(self, subtask_alloc):
         del self.probs[tuple(subtask_alloc)]
-        self.discretized_probs = None
 
     def normalize(self):
         if len(self.probs) == 0:
@@ -129,5 +88,19 @@ class SubtaskAllocDistribution:
         for subtask_alloc in self.probs.keys():
             self.probs[subtask_alloc] -= log_total
 
-        self.discretized_probs = None
         return self.probs
+
+    def get_entropy(self):
+        entropy = 0
+        for log_p in self.probs.values():
+            p = np.exp(log_p)
+            entropy += p * log_p
+
+        return -entropy
+
+    def get_max_entropy(self):
+        n = len(self.probs)
+        if not n:
+            raise Exception("0 probs in distribution.")
+
+        return np.log(n)

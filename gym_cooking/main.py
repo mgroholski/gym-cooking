@@ -61,7 +61,7 @@ def parse_arguments():
     parser.add_argument(
         "-r",
         type=float,
-        default=0.07,
+        default=0.05,
         help="The chance that a new order, if under queue size, is added to the order queue at any timestamp.",
     )
 
@@ -69,8 +69,8 @@ def parse_arguments():
     parser.add_argument(
         "--epsilon",
         type=float,
-        default=0.7,
-        help="The factor that the task allocation is believed to increase by.",
+        default=0.9,
+        help="The entropy threshold for communication.",
     )
 
     # Delegation Planner

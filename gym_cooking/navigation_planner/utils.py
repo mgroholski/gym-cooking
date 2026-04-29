@@ -69,7 +69,7 @@ def is_smaller(p_, p):
         return p_ < p
 
 
-def get_single_actions(env, agent, can_communicate):
+def get_single_actions(env, agent):
     actions = []
 
     agent_locs = list(map(lambda a: a.location, env.sim_agents))
@@ -105,9 +105,6 @@ def get_single_actions(env, agent, can_communicate):
 
     # doing nothing is always possible
     actions.append((0, 0))
-
-    if can_communicate:
-        actions.append(COMM_ACTION)
 
     return actions
 

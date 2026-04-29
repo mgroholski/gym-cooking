@@ -27,9 +27,7 @@ class BayesianDelegator(Delegator):
         model_type,
         planner,
         none_action_prob,
-        epsilon,
         comm_funcs,
-        can_communicate,
     ):
         """Initializing Bayesian Delegator for agent_name.
 
@@ -50,8 +48,6 @@ class BayesianDelegator(Delegator):
         self.priors = "uniform" if model_type == "up" else "spatial"
         self.planner = planner
         self.none_action_prob = none_action_prob
-        self.can_communicate = can_communicate
-        self.epsilon = epsilon
         self.comm_funcs = comm_funcs
 
     def should_reset_priors(self, obs, subtask_to_wrapper_dict, incomplete_subtasks):
@@ -125,9 +121,7 @@ class BayesianDelegator(Delegator):
         # Subtask allocation is doable if it's reachable between agents and subtask objects.
         return distance < env.world.perimeter
 
-    def get_lower_bound_for_subtask_alloc(
-        self, obs, task_alloc_p, subtask, subtask_agent_names
-    ):
+    def get_lower_bound_for_subtask_alloc(self, obs, subtask, subtask_agent_names):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
         if subtask is None:
@@ -136,14 +130,11 @@ class BayesianDelegator(Delegator):
 
         _ = self.planner.get_next_action(
             env=obs,
-            task_alloc_p=task_alloc_p,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners={},
         )
-        value = self.planner.v_l[
-            ((self.planner.cur_state.get_repr(), task_alloc_p), subtask)
-        ]
+        value = self.planner.v_l[((self.planner.cur_state.get_repr()), subtask)]
 
         return value
 
@@ -204,30 +195,16 @@ class BayesianDelegator(Delegator):
             for t in subtask_alloc:
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
-                    try:
-                        start_obj, goal_obj = nav_utils.get_subtask_obj(t.subtask)
-                        action_obj = nav_utils.get_subtask_action_obj(t.subtask)
-                        lb = obs.get_lower_bound_for_subtask_given_objs(
-                            t.subtask,
-                            t.subtask_agent_names,
-                            start_obj,
-                            goal_obj,
-                            action_obj,
+                    total_weight += 1.0 / float(
+                        self.get_lower_bound_for_subtask_alloc(
+                            obs=copy.copy(obs),
+                            subtask=t.subtask,
+                            subtask_agent_names=t.subtask_agent_names,
                         )
-
-                        total_weight += 1.0 / float(lb)
-                    except Exception as e:
-                        print(e)
-                        import traceback
-
-                        traceback.print_exc()
-                        breakpoint()
-                        exit(1)
-
+                    )
             # Weight by number of nonzero subtasks.
-            some_probs.set(
-                subtask_alloc=subtask_alloc,
-                value=np.log(len(t) ** 2.0 * total_weight),
+            some_probs.update(
+                subtask_alloc=subtask_alloc, factor=np.log(len(t) ** 2.0 * total_weight)
             )
         return some_probs
 
@@ -241,7 +218,7 @@ class BayesianDelegator(Delegator):
             if other_agent_name != self.agent_name:
                 # Get most likely subtask and subtask agents for other agent
                 # based on my beliefs.
-                subtask, subtask_agent_names, max_task_alloc = self.select_subtask(
+                subtask, subtask_agent_names, _ = self.select_subtask(
                     agent_name=other_agent_name
                 )
 
@@ -256,7 +233,6 @@ class BayesianDelegator(Delegator):
                 planner = copy.copy(self.planner)
                 planner.set_settings(
                     env=copy.copy(obs),
-                    task_alloc_p=self.probs.get(max_task_alloc),
                     subtask=subtask,
                     subtask_agent_names=subtask_agent_names,
                 )
@@ -264,7 +240,7 @@ class BayesianDelegator(Delegator):
         return planners
 
     def get_appropriate_state_and_other_agent_planners(
-        self, obs_tm1, task_alloc_p_tm1, backup_subtask, no_level_1
+        self, obs_tm1, backup_subtask, no_level_1
     ):
         """Return Level 1 planner if no_level_1 is False, otherwise
         return a Level 0 Planner."""
@@ -272,27 +248,23 @@ class BayesianDelegator(Delegator):
         if no_level_1:
             # Level 0 planning: Just use obs_tm1.
             state = obs_tm1
-            task_alloc_p = task_alloc_p_tm1
             # Assume other agents are fixed.
             other_planners = {}
         else:
             # Level 1 planning: Modify the state according to my beliefs.
-            state, task_alloc_p, _ = (
-                self.planner._get_modified_state_with_other_agent_actions(
-                    state=obs_tm1, task_alloc_p=task_alloc_p_tm1
-                )
+            state, _ = self.planner._get_modified_state_with_other_agent_actions(
+                state=obs_tm1
             )
             # Get other agent planners under my current beliefs.
             other_planners = self.get_other_agent_planners(
                 obs=obs_tm1,
                 backup_subtask=backup_subtask,
             )
-        return state, task_alloc_p, other_planners
+        return state, other_planners
 
     def prob_nav_actions(
         self,
         obs_tm1,
-        task_alloc_p_tm1,
         actions_tm1,
         subtask,
         subtask_agent_names,
@@ -333,7 +305,6 @@ class BayesianDelegator(Delegator):
                     get_single_actions(
                         env=obs_tm1,
                         agent=sim_agent,
-                        can_communicate=self.can_communicate,
                     )
                 )
                 - 1
@@ -356,25 +327,20 @@ class BayesianDelegator(Delegator):
         if len(subtask_agent_names) == 1:
             action = action[0]
 
-        state, task_alloc_p, other_planners = (
-            self.get_appropriate_state_and_other_agent_planners(
-                obs_tm1=obs_tm1,
-                task_alloc_p_tm1=task_alloc_p_tm1,
-                backup_subtask=subtask,
-                no_level_1=no_level_1,
-            )
+        state, other_planners = self.get_appropriate_state_and_other_agent_planners(
+            obs_tm1=obs_tm1,
+            backup_subtask=subtask,
+            no_level_1=no_level_1,
         )
 
         self.planner.set_settings(
             env=obs_tm1,
-            task_alloc_p=task_alloc_p_tm1,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_planners,
         )
         old_q = self.planner.Q(
             state=state,
-            task_alloc_p=task_alloc_p,
             action=action,
             value_f=self.planner.v_l,
         )
@@ -406,7 +372,6 @@ class BayesianDelegator(Delegator):
             old_q
             - self.planner.Q(
                 state=state,
-                task_alloc_p=task_alloc_p,
                 action=nav_action,
                 value_f=self.planner.v_l,
             )
@@ -621,7 +586,7 @@ class BayesianDelegator(Delegator):
                 ]
                 self.probs = SubtaskAllocDistribution(subtask_allocs)
 
-    def bayes_update(self, obs_tm1, actions_tm1, comm_info_tm1, comm_info, beta):
+    def bayes_update(self, obs_tm1, actions_tm1, comm_info, beta):
         """Apply Bayesian update based on previous observation (obs_tms1)
         and most recent actions taken (actions_tm1). Beta is used to determine
         how rational agents act."""
@@ -641,65 +606,29 @@ class BayesianDelegator(Delegator):
         if self.model_type == "fb":
             return
 
-        probs_tm1 = copy.copy(self.probs)
         ta_set = self.probs.enumerate_subtask_allocs()
-
-        if comm_info_tm1 is not None:
-            speaking_agents_tm1 = set([k for k in comm_info_tm1.keys()])
-
-        if comm_info is not None:
-            speaking_agents_t = set([k for k in comm_info.keys()])
 
         for task_alloc in ta_set:
             update = 0.0
-            task_alloc_p_tm1 = probs_tm1.get(task_alloc)
             for t in task_alloc:
-                for subtask_agent_name in t.subtask_agent_names:
-                    agent_subtask_alloc_tm1 = task_alloc_p_tm1
-                    if comm_info_tm1 is not None:
-                        other_speaking_agents_tm1 = speaking_agents_tm1.difference(
-                            [subtask_agent_name]
-                        )
-                        for agent_name in other_speaking_agents_tm1:
-                            task_alloc_z, c, _ = comm_info_tm1[agent_name]
-                            if task_alloc_z == task_alloc:
-                                agent_subtask_alloc_tm1 = min(
-                                    1.0,
-                                    agent_subtask_alloc_tm1 + (self.epsilon * c),
-                                )
-                            else:
-                                agent_subtask_alloc_tm1 = max(
-                                    0.0,
-                                    agent_subtask_alloc_tm1
-                                    - (
-                                        (c * self.epsilon)
-                                        / (len(ta_set) - len(other_speaking_agents_tm1))
-                                    ),
-                                )
+                p = self.prob_nav_actions(
+                    obs_tm1=copy.copy(obs_tm1),
+                    actions_tm1=actions_tm1,
+                    subtask=t.subtask,
+                    subtask_agent_names=t.subtask_agent_names,
+                    beta=beta,
+                    no_level_1=False,
+                )  # P(a_t | s_t, ta)
 
-                    p = self.prob_nav_actions(
-                        obs_tm1=copy.copy(obs_tm1),
-                        task_alloc_p_tm1=agent_subtask_alloc_tm1,
-                        actions_tm1=actions_tm1,
-                        subtask=t.subtask,
-                        subtask_agent_names=t.subtask_agent_names,
-                        beta=beta,
-                        no_level_1=False,
-                    )  # P(a | s, z, ta)
-                    if p != 0:
-                        update += np.log(p)
-                    else:
-                        update += NEG_INF_LOG_VAL
+                if p != 0:
+                    update += len(t.subtask_agent_names) * np.log(p)
+                else:
+                    update += NEG_INF_LOG_VAL
 
-                    if (
-                        comm_info is not None
-                        and subtask_agent_name in speaking_agents_t
-                    ):
-                        _, _, comm = comm_info[subtask_agent_name]
-                        logit_p = self.comm_funcs.get_logits(
-                            subtask_agent_name, comm, task_alloc
-                        )
-                        update += logit_p
+            if comm_info is not None:
+                for agent_name, (_, _, comm) in comm_info.items():
+                    logit_p = self.comm_funcs.get_logits(agent_name, comm, task_alloc)
+                    update += logit_p
             self.probs.update(subtask_alloc=task_alloc, factor=update)
             print("UPDATING: subtask_alloc {} by {}".format(task_alloc, update))
         self.probs.normalize()

@@ -63,8 +63,6 @@ class RealAgent:
             tau=arglist.tau,
             cap=arglist.cap,
             main_cap=arglist.main_cap,
-            epsilon=arglist.epsilon,
-            can_communicate=arglist.comm,
         )
 
         self.comm_func = CommunicationFunctions(self.arglist)
@@ -126,18 +124,21 @@ class RealAgent:
         )
         self.plan(copy.copy(obs))
 
-        if self.task_alloc is not None:
-            self.task_alloc_p_tm1 = self.delegator.probs.get(self.task_alloc)
-        else:
-            self.task_alloc_p_tm1 = 1
+        comm = None if not self.arglist.comm else self.generate_communication(obs)
 
-        comm = None
-        if self.action == nav_utils.COMM_ACTION:
-            comm = self.generate_communication(obs, self.task_alloc)
         return self.action, comm
 
-    def generate_communication(self, obs, task_alloc):
-        return self.comm_func.speak(self.name, obs, task_alloc)
+    def generate_communication(self, obs):
+        entropy = self.delegator.probs.get_entropy()
+        threshold_entropy = (
+            self.arglist.epsilon * self.delegator.probs.get_max_entropy()
+        )
+        if entropy > threshold_entropy:
+            print(
+                f"[{self.name}-generate-comm] Entropy of {entropy} exceeds threshold entropy of {threshold_entropy}."
+            )
+            return self.comm_func.speak(self.name, obs, self.task_alloc)
+        return None
 
     def get_subtasks(self, world) -> Dict:
         """Return different subtask permutations for active orders."""
@@ -179,8 +180,6 @@ class RealAgent:
             model_type=self.model_type,
             planner=self.planner,
             none_action_prob=self.none_action_prob,
-            epsilon=self.arglist.epsilon,
-            can_communicate=self.arglist.comm,
             comm_funcs=self.comm_func,
         )
 
@@ -288,16 +287,9 @@ class RealAgent:
                         self.name, env.comms, self.delegator.probs
                     )
 
-                comm_info_tm1 = None
-                if len(env.obs_tm1.comms):
-                    comm_info_tm1 = self.comm_func.listen(
-                        self.name, env.obs_tm1.comms, self.delegator.probs
-                    )
-
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
                     actions_tm1=env.agent_actions,
-                    comm_info_tm1=comm_info_tm1,
                     comm_info=comm_info,
                     beta=self.beta,
                 )
@@ -328,9 +320,7 @@ class RealAgent:
 
         # If subtask is None, then do nothing.
         if (self.new_subtask is None) or (not self.new_subtask_agent_names):
-            actions = nav_utils.get_single_actions(
-                env=env, agent=self, can_communicate=self.arglist.comm
-            )
+            actions = nav_utils.get_single_actions(env=env, agent=self)
             probs = []
             for a in actions:
                 if a == (0, 0):
@@ -360,10 +350,8 @@ class RealAgent:
                 )
             )
 
-            new_subtask_p = self.delegator.probs.get(self.new_task_alloc)
             action = self.planner.get_next_action(
                 env=env,
-                task_alloc_p=new_subtask_p,
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
                 other_agent_planners=other_agent_planners,
