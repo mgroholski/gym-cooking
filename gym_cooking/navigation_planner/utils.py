@@ -26,8 +26,6 @@ StringToObject = {
     "Potato": Potato,
 }
 
-COMM_ACTION = (-1, -1)
-
 
 class MinPriorityQueue(PriorityQueue):
     """Used for min priority queue in BRTDP algorithm."""

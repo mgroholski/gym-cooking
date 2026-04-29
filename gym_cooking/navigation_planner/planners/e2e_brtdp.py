@@ -77,7 +77,6 @@ class E2E_BRTDP:
         # Setting up costs for value function.
         self.time_cost = 1.0
         self.action_cost = 0.1
-        self.comm_cost = 0.01
 
     def __copy__(self):
         copy_ = E2E_BRTDP(
@@ -575,10 +574,8 @@ class E2E_BRTDP:
         if isinstance(action[0], int):
             action = tuple([action])
         for a in action:
-            if a != (0, 0) and a != nav_utils.COMM_ACTION:
+            if a != (0, 0):
                 cost += self.action_cost
-            elif a == nav_utils.COMM_ACTION:
-                cost += self.comm_cost
 
         return cost
 

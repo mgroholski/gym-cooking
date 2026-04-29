@@ -10,7 +10,7 @@ def interact(agent, world):
     """
 
     # agent does nothing (i.e. no arrow key)
-    if agent.action == (0, 0) or agent.action == nav_utils.COMM_ACTION:
+    if agent.action == (0, 0):
         return
 
     action_x, action_y = world.inbounds(
