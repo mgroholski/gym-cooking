@@ -204,7 +204,8 @@ class BayesianDelegator(Delegator):
                     )
             # Weight by number of nonzero subtasks.
             some_probs.update(
-                subtask_alloc=subtask_alloc, factor=np.log(len(t) ** 2.0 * total_weight)
+                subtask_alloc=subtask_alloc,
+                factor=np.log(len(t) ** 2.0 * total_weight),
             )
         return some_probs
 

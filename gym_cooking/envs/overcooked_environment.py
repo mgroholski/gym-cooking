@@ -349,13 +349,13 @@ class OvercookedEnvironment(gym.Env):
         print("All Subtasks:", [k for k in all_subtasks.keys()], "\n")
         return all_subtasks
 
-    def add_order_to_queue(self):
+    def add_task_to_queue(self):
         if len(self.hidden_task_queue):
             popped_order = self.hidden_task_queue.pop(0)
             self.task_queue.append(popped_order)
             popped_order.start_t = self.t
             print(
-                f"APPENDING ORDER: Adding {popped_order.recipe.name} to order queue at timestep {self.t}."
+                f"APPENDING TASK: Adding {popped_order.recipe.name} to task queue at timestep {self.t}."
             )
 
     def initialize_task_queue(self):
@@ -370,7 +370,7 @@ class OvercookedEnvironment(gym.Env):
                 Order(self.recipes[i], idx) for idx, i in enumerate(recipe_indices)
             ]
 
-        print("Order Queue: ", [r.get_repr() for r in self.hidden_task_queue])
+        print("Task Queue: ", [r.get_repr() for r in self.hidden_task_queue])
 
         if self.arglist.play or not self.arglist.partially_observable:
             self.task_queue = self.hidden_task_queue
@@ -378,7 +378,7 @@ class OvercookedEnvironment(gym.Env):
         else:
             self.task_queue = []
             if len(self.hidden_task_queue):
-                self.add_order_to_queue()
+                self.add_task_to_queue()
 
         self.world.task_queue = self.task_queue
 
