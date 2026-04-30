@@ -188,7 +188,6 @@ class RealAgent:
         self.subtask = None
         self.subtask_agent_names = []
         self.subtask_complete = False
-        self.planner.reset_value_caches()
 
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
@@ -266,6 +265,7 @@ class RealAgent:
             )
         ):
             self.reset_subtasks()
+            self.planner.reset_value_caches()
             self.delegator.set_priors(
                 obs=copy.copy(env),
                 incomplete_subtasks=self.incomplete_subtasks,
