@@ -594,9 +594,11 @@ class E2E_BRTDP:
         }
         return b
 
-    def reset_value_caches(self):
-        self.v_l = {}
-        self.v_u = {}
+    def reset_value_caches(self, subtask):
+        for state, action in list(self.v_l.keys()):
+            if action == subtask:
+                del self.v_l[(state, action)]
+                del self.v_u[(state, action)]
 
     def _get_modified_state_with_other_agent_actions(self, state):
         """Do nothing if the planner level is level 0.

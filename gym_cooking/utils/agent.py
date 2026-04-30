@@ -254,6 +254,7 @@ class RealAgent:
             raise Exception(f"{subtask} not in subtask_wrapper_dict")
 
         self.subtask_removed = True
+        self.delegator.planner.reset_value_caches(subtask)
 
     def update_subtasks(self, env):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
@@ -265,7 +266,6 @@ class RealAgent:
             )
         ):
             self.reset_subtasks()
-            self.planner.reset_value_caches()
             self.delegator.set_priors(
                 obs=copy.copy(env),
                 incomplete_subtasks=self.incomplete_subtasks,
