@@ -639,7 +639,7 @@ class OvercookedEnvironment(gym.Env):
                 (all([(o.is_complete) for o in self.task_queue]))
                 or (np.random.random() < new_order_prob)
             ):
-                self.add_order_to_queue()
+                self.add_task_to_queue()
 
     def cache_distances(self):
         """Saving distances between world objects."""
