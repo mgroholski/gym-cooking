@@ -63,7 +63,7 @@ class E2E_BRTDP:
 
         self.v_l = {}
         self.v_u = {}
-        self.repr_to_env_dict = OrderedDict()
+        self.repr_to_env_dict = dict()
         self.start = None
         self.pq = mpq()
         self.actions = World.NAV_ACTIONS
@@ -87,16 +87,6 @@ class E2E_BRTDP:
         )
         copy_.__dict__ = self.__dict__.copy()
         return copy_
-
-    def _cache_env_state(self, state_repr, env_state):
-        # Move to end if already present (LRU)
-        if state_repr in self.repr_to_env_dict:
-            self.repr_to_env_dict.move_to_end(state_repr)
-        self.repr_to_env_dict[state_repr] = env_state
-
-        # Evict oldest if over cap
-        if len(self.repr_to_env_dict) > 100000000:
-            self.repr_to_env_dict.popitem(last=False)
 
     @lru_cache(maxsize=10000)
     def T(self, state_repr, action):
@@ -514,7 +504,8 @@ class E2E_BRTDP:
     def repr_init(self, env_state):
         """Initialize repr for environment state."""
         es_repr = env_state.get_repr()
-        self._cache_env_state(es_repr, copy.copy(env_state))
+        if es_repr not in self.repr_to_env_dict:
+            self.repr_to_env_dict[es_repr] = copy.copy(env_state)
         return es_repr
 
     def value_init(self, env_state):
