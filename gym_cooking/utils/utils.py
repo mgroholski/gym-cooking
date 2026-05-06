@@ -1,7 +1,6 @@
-from readline import get_current_history_length
-from typing import Dict
-
 import navigation_planner.utils as nav_utils
+import numpy as np
+from delegation_planner.utils import NEG_INF_LOG_VAL
 from recipe_planner.stripsworld import STRIPSWorld
 
 
@@ -52,7 +51,7 @@ def get_dispenser_str(obj):
 
 class BeliefState:
     def __init__(self, obs, max_num_subtasks):
-        beliefs: Dict[str, float] = {}
+        self.beliefs = {}
 
         # Gets subtasks for all possible recipes.
         sw = STRIPSWorld(obs.world, obs.recipes)
@@ -60,41 +59,51 @@ class BeliefState:
 
         all_subtasks = set()
         for recipe_subtask_set in subtasks_per_recipe:
-            all_subtasks = all_subtasks | recipe_subtask_set
+            all_subtasks |= recipe_subtask_set
 
         for subtask in all_subtasks:
             start_objs, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
 
             if isinstance(start_objs, (list, tuple)):
                 for start_obj in start_objs:
-                    if is_initial_status_ing(start_obj):
-                        obj_p = init_ingredient_belief(start_obj, obs)
-                        beliefs[start_obj.full_name] = obj_p
-                        beliefs[get_dispenser_str(start_obj)] = obj_p
-                    else:
-                        beliefs[start_obj.full_name] = 0.0
+                    self._set_start_obj_beliefs(start_obj, obs)
             else:
-                if is_initial_status_ing(start_objs):
-                    obj_p = init_ingredient_belief(start_objs, obs)
-                    beliefs[start_objs.full_name] = obj_p
-                    beliefs[get_dispenser_str(start_objs)] = obj_p
-                else:
-                    beliefs[start_objs.full_name] = 0.0
+                self._set_start_obj_beliefs(start_objs, obs)
 
-            beliefs[goal_obj.full_name] = init_ingredient_belief(goal_obj, obs)
-            beliefs[get_cnt_str(goal_obj)] = 0.0
+            self.beliefs[goal_obj.full_name] = init_ingredient_belief(goal_obj, obs)
+            self.beliefs[get_cnt_str(goal_obj)] = 0.0
 
             action_obj = nav_utils.get_subtask_action_obj(subtask)
             if action_obj is not None:
-                # At t=0, if no such object exists in the world, belief is 1.0.
-                # Otherwise initialize with uncertainty 0.5.
-                beliefs[action_obj.name] = (
+                self.beliefs[action_obj.name] = (
                     1.0 if not len(obs.world.get_all_object_locs(action_obj)) else 0.5
                 )
 
-        self.beliefs: Dict[str, float] = beliefs
+        # Converts all probs to log probs
+        for k, v in self.beliefs.items():
+            if v != 0:
+                self.beliefs[k] = np.log(v)
+            else:
+                self.beliefs[k] = NEG_INF_LOG_VAL
+
+    def _set_start_obj_beliefs(self, start_obj, obs):
+        if is_initial_status_ing(start_obj):
+            obj_p = init_ingredient_belief(start_obj, obs)
+            self.beliefs[start_obj.full_name] = obj_p
+            self.beliefs[get_dispenser_str(start_obj)] = obj_p
+        else:
+            self.beliefs[start_obj.full_name] = 0.0
 
     def update(self, obs):
+        raise NotImplementedError()
+
+    def get_existence_prob(self, obj):
+        raise NotImplementedError()
+
+    def get_dispenser_prob(self, obj):
+        raise NotImplementedError()
+
+    def get_cnt_prob(self, obj):
         raise NotImplementedError()
 
     def __copy__(self):
