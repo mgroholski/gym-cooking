@@ -374,6 +374,18 @@ class World:
                 )
             )
 
+    def get_all_non_delivered_object_locs(self, obj):
+        held_locs = set(self.get_object_locs(obj=obj, is_held=True))
+        unheld_locs = set(self.get_object_locs(obj=obj, is_held=False))
+
+        non_delivered_unheld_locs = [
+            loc
+            for loc in unheld_locs
+            if not self.get_object_at(loc, obj, False, False).is_delivered
+        ]
+
+        return list(held_locs.union(non_delivered_unheld_locs))
+
     def get_all_object_locs(self, obj):
         return list(
             set(
@@ -382,7 +394,7 @@ class World:
             )
         )
 
-    def get_object_at(self, location, desired_obj, find_held_objects):
+    def get_object_at(self, location, desired_obj, find_held_objects, duplicate=True):
         # Map obj => location => filter by location => return that object.
         all_objs = self.get_object_list()
 

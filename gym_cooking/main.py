@@ -39,6 +39,7 @@ def parse_arguments():
         default=False,
         help="Return observations as images (instead of objects)",
     )
+
     parser.add_argument(
         "--partially-observable",
         action="store_true",
@@ -55,7 +56,13 @@ def parse_arguments():
         "--queue-size",
         type=int,
         default=1,
-        help="Number of orders to place in the queue at reset",
+        help="Number of tasks to place in the queue at reset.",
+    )
+    parser.add_argument(
+        "--comm",
+        action="store_true",
+        default=False,
+        help="Toggles the agents ability to communicate.",
     )
 
     parser.add_argument(
@@ -81,7 +88,7 @@ def parse_arguments():
         help="Beta for softmax in Bayesian delegation updates",
     )
 
-    # Navigation Planner
+    # Navigation Planne
     parser.add_argument("--alpha", type=float, default=0.01, help="Alpha for BRTDP")
     parser.add_argument("--tau", type=int, default=2, help="Normalize v diff")
     parser.add_argument(
@@ -95,6 +102,12 @@ def parse_arguments():
         type=int,
         default=100,
         help="Max number of main loops in each run of BRTDP",
+    )
+    parser.add_argument(
+        "--D",
+        type=float,
+        default=5,
+        help="The discrectization parameter for existence beliefs.",
     )
 
     # Visualizations
@@ -210,7 +223,7 @@ def main_loop(arglist):
 
         # Agents
         for idx, agent in enumerate(real_agents):
-            agent.refresh_subtasks(world=obs.get_agent_obs(idx).world)
+            agent.refresh_subtasks(env=obs.get_agent_obs(idx))
 
         # Saving info
         bag.add_status(cur_time=info["t"], real_agents=real_agents)

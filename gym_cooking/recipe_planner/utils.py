@@ -88,15 +88,6 @@ class Action:
         self.set_specs()
         self.is_joint = False
 
-        self.cnt = None
-
-    def get_cnt_str(self):
-        return (
-            self.__str__()
-            if self.cnt is None
-            else f"{self.name}_{self.cnt}({', '.join(self.args)})"
-        )
-
     def __str__(self):
         return "{}({})".format(self.name, ", ".join(self.args))
 

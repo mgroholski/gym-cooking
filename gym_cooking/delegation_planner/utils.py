@@ -10,7 +10,7 @@ NEG_INF_LOG_VAL = np.finfo(float).tiny
 class SubtaskAllocDistribution:
     """Represents a distribution over subtask allocations."""
 
-    def __init__(self, subtask_allocs):
+    def __init__(self, subtask_allocs, gamma):
         # subtask_allocs are a list of tuples of (subtask, subtask_agents).
 
         self.probs = {}
@@ -39,7 +39,7 @@ class SubtaskAllocDistribution:
         return new
 
     def enumerate_subtask_allocs(self):
-        return list(self.probs.keys())
+        return list([k for k in self.probs.keys() if self.probs[k] != 0])
 
     def get_list(self):
         return list(self.probs.items())
@@ -47,6 +47,14 @@ class SubtaskAllocDistribution:
     def get(self, subtask_alloc):
         log_p = self.probs[tuple(subtask_alloc)]
         return np.exp(log_p)
+
+    def get_comm_dist(self):
+        cur_task_alloc = self.get_max()
+        altered_dist = copy.copy(self)
+        altered_dist.probs[tuple(cur_task_alloc)] *= self.gamma
+        altered_dist.normalize()
+
+        return altered_dist
 
     def get_max(self):
         if len(self.probs) > 0:

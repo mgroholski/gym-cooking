@@ -1,4 +1,5 @@
 import random
+import re
 from queue import PriorityQueue
 
 import numpy as np
@@ -25,6 +26,8 @@ StringToObject = {
     "MeatPatty": MeatPatty,
     "Potato": Potato,
 }
+
+COMM_ACTION = (-1, -1)
 
 
 class MinPriorityQueue(PriorityQueue):
@@ -67,10 +70,10 @@ def is_smaller(p_, p):
         return p_ < p
 
 
-def get_single_actions(env, agent):
+def get_single_actions(env, agent, can_communicate):
     actions = []
 
-    agent_locs = list(map(lambda a: a.location, env.sim_agents))
+    agent_locs = [a.location for a in env.sim_agents if a.location is not None]
 
     # Check valid movement actions
     for t in [(0, 1), (0, -1), (-1, 0), (1, 0)]:
@@ -104,6 +107,9 @@ def get_single_actions(env, agent):
     # doing nothing is always possible
     actions.append((0, 0))
 
+    if can_communicate:
+        actions.append(COMM_ACTION)
+
     return actions
 
 
@@ -136,6 +142,37 @@ def get_min_dist_between(A_locations, B_locations):
         if A_min < min_dist:
             min_dist = A_min
     return min_dist
+
+
+def get_obj_by_full_name(obj_full_name, type_, location=(None, None)):
+    obj_full_name_split = obj_full_name.split("-")
+    obj = None
+    for obj_name in obj_full_name_split:
+        state = "Fresh"
+
+        match = re.match(r"^(Fresh|Chopped|Cooked)?\s*(.*)$", obj_name)
+        if match:
+            if match.group(1):
+                state = match.group(1)
+            name = match.group(2)
+        else:
+            name = obj_name
+
+        if state == "Fresh":
+            state = FoodState.FRESH
+        elif state == "Chopped":
+            state = FoodState.CHOPPED
+        elif state == "Cooked":
+            state = FoodState.COOKED
+
+        sub_obj = get_obj(name, type_, state, location)
+
+        if obj is None:
+            obj = sub_obj
+        else:
+            obj.merge(sub_obj)
+
+    return obj
 
 
 def get_obj(obj_string, type_, state, location=(None, None)):

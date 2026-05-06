@@ -2,6 +2,8 @@ import navigation_planner.utils as nav_utils
 import numpy as np
 from utils.core import *
 
+from gym_cooking.navigation_planner.utils import COMM_ACTION
+
 
 def interact(agent, world):
     """Carries out interaction for this agent taking this action in this world.
@@ -9,8 +11,8 @@ def interact(agent, world):
     The action that needs to be executed is stored in `agent.action`.
     """
 
-    # agent does nothing (i.e. no arrow key)
-    if agent.action == (0, 0):
+    # agent does nothing (i.e. no arrow key) or communicates
+    if agent.action == (0, 0) or agent.action == COMM_ACTION:
         return
 
     action_x, action_y = world.inbounds(
@@ -41,7 +43,11 @@ def interact(agent, world):
         # if occupied gridsquare in front --> try merging
         elif world.is_occupied(gs.location):
             # Get object on gridsquare/counter
-            obj = world.get_object_at(gs.location, None, find_held_objects=False)
+            try:
+                obj = world.get_object_at(gs.location, None, find_held_objects=False)
+            except Exception as e:
+                print(e)
+                breakpoint()
 
             if mergeable(agent.holding, obj):
                 world.remove(obj)
@@ -73,6 +79,11 @@ def interact(agent, world):
             else:
                 gs.acquire(obj)  # obj is put onto gridsquare
                 agent.release()
+                if gs.location in world.shared_space_locs:
+                    agent.objs_shared_cnt[obj.full_name] = (
+                        agent.objs_shared_cnt.get(obj.full_name, 0) + 1
+                    )
+
                 assert (
                     world.get_object_at(
                         gs.location, obj, find_held_objects=False
@@ -99,6 +110,10 @@ def interact(agent, world):
             obj = gs.release()
             if obj is not None:
                 agent.acquire(obj)
+                if gs.location in world.shared_space_locs:
+                    agent.objs_shared_cnt[obj.full_name] = (
+                        agent.objs_shared_cnt.get(obj.full_name, 0) - 1
+                    )
 
         # if empty in front --> interact
         elif not world.is_occupied(gs.location):
