@@ -198,10 +198,8 @@ class World:
                 min_bound_to_B = min(bound_1_to_B, bound_2_to_B)
 
                 # For chop or deliver, must bring A to B.
-                if (
-                    isinstance(subtask, recipe.Chop)
-                    or isinstance(subtask, recipe.Cook)
-                    or isinstance(subtask, recipe.Deliver)
+                if isinstance(subtask, recipe.Chop) or isinstance(
+                    subtask, recipe.Deliver
                 ):
                     bound = min_bound_to_A + bound_between_agents - 1
                 # For merge, agents can separately go to A and B and then meet in the middle.

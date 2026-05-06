@@ -192,6 +192,38 @@ class OvercookedEnvironment(gym.Env):
                         )
                     agent_idx += 1
 
+        # TODO: REMOVE
+        """
+        Agent 1 @ (1,3)
+        Agent 1 holding fresh lettuce
+
+        Agent 2 @ (5,5)
+
+        Lettuce-Plate @ (6,3)
+        Tomato-Plate @ (4,6)
+        """
+
+        # chopped_lettuce = Lettuce(1)
+        # plate = Plate()
+        # lettuce_plate = Object(location=(6, 3), contents=[chopped_lettuce, plate])
+        # self.world.insert(lettuce_plate)
+        # self.world.get_gridsquare_at((6, 3)).acquire(lettuce_plate)
+
+        # chopped_tomato = Tomato(1)
+        # plate = Plate()
+        # tomato_plate = Object(location=(4, 6), contents=[chopped_tomato, plate])
+        # self.world.insert(tomato_plate)
+        # self.world.get_gridsquare_at((4, 6)).acquire(tomato_plate)
+
+        # lettuce = Lettuce(0)
+        # lettuce_obj = Object(location=(-1, -1), contents=[lettuce])
+        # self.world.insert(lettuce_obj)
+        # self.sim_agents[0].location = (1, 3)
+        # self.sim_agents[0].acquire(lettuce_obj)
+
+        # self.sim_agents[1].location = (5, 5)
+        # TODO: REMOVE
+
         self.distances = {}
         self.world.width = x + 1
         self.world.height = y

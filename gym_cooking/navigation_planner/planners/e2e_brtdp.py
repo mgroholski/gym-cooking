@@ -2,11 +2,12 @@
 import copy
 import random
 import time
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from enum import Enum
 from functools import lru_cache
 from itertools import product
 
+# Navigation planning
 import navigation_planner.utils as nav_utils
 import numpy as np
 import scipy as sp
@@ -19,7 +20,6 @@ from utils.interact import interact
 from utils.world import World
 
 
-# Navigation planning
 class PlannerLevel(Enum):
     LEVEL1 = 1
     LEVEL0 = 0
@@ -27,6 +27,7 @@ class PlannerLevel(Enum):
 
 def argmin(vector):
     e_x = np.array(vector) == min(vector)
+
     return np.where(np.random.multinomial(1, e_x / e_x.sum()))[0][0]
 
 
@@ -80,10 +81,7 @@ class E2E_BRTDP:
 
     def __copy__(self):
         copy_ = E2E_BRTDP(
-            alpha=self.alpha,
-            tau=self.tau,
-            cap=self.cap,
-            main_cap=self.main_cap,
+            alpha=self.alpha, tau=self.tau, cap=self.cap, main_cap=self.main_cap
         )
         copy_.__dict__ = self.__dict__.copy()
         return copy_
@@ -173,8 +171,7 @@ class E2E_BRTDP:
         counter = 0
         start_repr = self.start.get_repr()
         diff = (
-            self.v_u[((start_repr), self.subtask)]
-            - self.v_l[((start_repr), self.subtask)]
+            self.v_u[(start_repr, self.subtask)] - self.v_l[(start_repr, self.subtask)]
         )
         print("DIFF AT START: {}".format(diff))
 
@@ -182,7 +179,7 @@ class E2E_BRTDP:
             counter += 1
             if counter > self.cap:
                 break
-            traj.push((x))
+            traj.push(x)
 
             # Get repr of current environment state.
             x_repr = x.get_repr()
@@ -202,50 +199,28 @@ class E2E_BRTDP:
             # We pick actions based on expected state.
             new_upper = min(
                 [
-                    self.Q(
-                        state=modified_state,
-                        action=a,
-                        value_f=self.v_u,
-                    )
+                    self.Q(state=modified_state, action=a, value_f=self.v_u)
                     for a in actions
                 ]
             )
-            self.v_u[((modified_state_repr), self.subtask)] = new_upper
+            self.v_u[(modified_state_repr, self.subtask)] = new_upper
 
             action_index = argmin(
                 [
-                    self.Q(
-                        state=modified_state,
-                        action=a,
-                        value_f=self.v_l,
-                    )
+                    self.Q(state=modified_state, action=a, value_f=self.v_l)
                     for a in actions
                 ]
             )
             a = actions[action_index]
 
-            new_lower = self.Q(
-                state=modified_state,
-                action=a,
-                value_f=self.v_l,
-            )
-            self.v_l[((modified_state_repr), self.subtask)] = new_lower
+            new_lower = self.Q(state=modified_state, action=a, value_f=self.v_l)
+            self.v_l[(modified_state_repr, self.subtask)] = new_lower
 
             b = self.get_expected_diff(modified_state, a)
             B = sum(b.values())
             diff = (
-                self.v_u[
-                    (
-                        (start_repr),
-                        self.subtask,
-                    )
-                ]
-                - self.v_l[
-                    (
-                        (start_repr),
-                        self.subtask,
-                    )
-                ]
+                self.v_u[(start_repr, self.subtask)]
+                - self.v_l[(start_repr, self.subtask)]
             ) / self.tau
             if B <= diff:
                 break
@@ -256,6 +231,7 @@ class E2E_BRTDP:
             # if it's new.
             self.repr_init(env_state=x)
             self.value_init(env_state=x)
+
         print(
             "RUN SAMPLE EXPLORED {} STATES, took {}".format(
                 len(traj), time.time() - start_time
@@ -265,11 +241,10 @@ class E2E_BRTDP:
             x = traj.pop()
             x_repr = x.get_repr()
             actions = self.get_actions(state_repr=x_repr)
-            self.v_u[((x_repr), self.subtask)] = min(
+            self.v_u[(x_repr, self.subtask)] = min(
                 [self.Q(state=x, action=a, value_f=self.v_u) for a in actions]
             )
-
-            self.v_l[((x_repr), self.subtask)] = min(
+            self.v_l[(x_repr, self.subtask)] = min(
                 [self.Q(state=x, action=a, value_f=self.v_l) for a in actions]
             )
 
@@ -278,16 +253,15 @@ class E2E_BRTDP:
         main_counter = 0
         start_repr = self.start.get_repr()
 
-        upper = self.v_u[((start_repr), self.subtask)]
-        lower = self.v_l[((start_repr), self.subtask)]
+        upper = self.v_u[(start_repr, self.subtask)]
+        lower = self.v_l[(start_repr, self.subtask)]
         diff = upper - lower
 
         # Run until convergence or until you max out on iteration
         while (diff > self.alpha) and (main_counter < self.main_cap):
             print("\nstarting main loop #", main_counter)
-
-            new_upper = self.v_u[((start_repr), self.subtask)]
-            new_lower = self.v_l[((start_repr), self.subtask)]
+            new_upper = self.v_u[(start_repr, self.subtask)]
+            new_lower = self.v_l[(start_repr, self.subtask)]
             new_diff = new_upper - new_lower
             if new_diff > diff + 0.01:
                 self.start.update_display()
@@ -424,7 +398,6 @@ class E2E_BRTDP:
                         )
                     )
                 )
-
         else:
             # Get current count of desired objects.
             self.cur_obj_count = len(env.world.get_all_object_locs(self.goal_obj))
@@ -450,13 +423,7 @@ class E2E_BRTDP:
 
         self.is_joint = len(subtask_agent_names) == 2
 
-    def set_settings(
-        self,
-        env,
-        subtask,
-        subtask_agent_names,
-        other_agent_planners={},
-    ):
+    def set_settings(self, env, subtask, subtask_agent_names, other_agent_planners={}):
         """Configure planner."""
         # Configuring the planner level.
         self._configure_planner_level(
@@ -512,20 +479,17 @@ class E2E_BRTDP:
         """Initialize value for environment state."""
         # Skip if already initialized.
         es_repr = env_state.get_repr()
-        if ((es_repr), self.subtask) in self.v_l and (
-            (es_repr),
-            self.subtask,
-        ) in self.v_u:
+        if (es_repr, self.subtask) in self.v_l and (es_repr, self.subtask) in self.v_u:
             return
 
         # Goal state has value 0.
         if self.is_goal_state(es_repr):
-            self.v_l[((es_repr), self.subtask)] = 0.0
-            self.v_u[((es_repr), self.subtask)] = 0.0
+            self.v_l[(es_repr, self.subtask)] = 0.0
+            self.v_u[(es_repr, self.subtask)] = 0.0
             return
 
         # Determine lower bound on this environment state.
-        lower_heur = env_state.get_lower_bound_for_subtask_given_objs(
+        lower = env_state.get_lower_bound_for_subtask_given_objs(
             subtask=self.subtask,
             subtask_agent_names=self.subtask_agent_names,
             start_obj=self.start_obj,
@@ -533,21 +497,18 @@ class E2E_BRTDP:
             subtask_action_obj=self.subtask_action_obj,
         )
 
-        lower_heur = lower_heur * (self.time_cost + self.action_cost)
+        subtask_agents = self.get_subtask_agents(env_state=env_state)
+        lower = lower * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
-        assert lower_heur > 0, "lower: {}, {}, {}".format(
-            lower_heur, env_state.display(), env_state.print_agents()
+        assert lower > 0, "lower: {}, {}, {}".format(
+            lower, env_state.display(), env_state.print_agents()
         )
 
-        upper_heur = lower_heur * 5 * (self.time_cost + self.action_cost)
-        lower_heur -= 1.09
-
-        lower = lower_heur
-        upper = upper_heur
-
-        self.v_l[((es_repr), self.subtask)] = lower
-        self.v_u[((es_repr), self.subtask)] = upper
+        self.v_l[(es_repr, self.subtask)] = lower - 1.09
+        self.v_u[(es_repr, self.subtask)] = (
+            lower * 5 * (self.time_cost + self.action_cost)
+        )
 
     def Q(self, state, action, value_f):
         """Get Q value using value_f of (state, action)."""
@@ -562,11 +523,42 @@ class E2E_BRTDP:
         next_state = self.T(state_repr=s_repr, action=action)
 
         # Initialize new state if it's new.
-        self.repr_init(env_state=next_state)
+        ns_repr = self.repr_init(env_state=next_state)
         self.value_init(env_state=next_state)
 
-        expected_value = 1.0 * value_f[((next_state.get_repr()), self.subtask)]
+        expected_value = 1.0 * value_f[(ns_repr, self.subtask)]
         return float(cost + expected_value)
+
+    def V(self, state, _type):
+        """Get V*(x) = min_{a \in A} Q_{v*}(x, a)."""
+
+        # Initialize state if it's new.
+        s_repr = self.repr_init(env_state=state)
+
+        # Check if this is the desired goal state.
+        if self.is_goal_state(s_repr):
+            return 0
+
+        # Use lower bound on value function.
+        if _type == "lower":
+            return min(
+                [
+                    self.Q(state=state, action=action, value_f=self.v_l)
+                    for action in self.get_actions(state_repr=s_repr)
+                ]
+            )
+        # Use upper bound on value function.
+        elif _type == "upper":
+            return min(
+                [
+                    self.Q(state=state, action=action, value_f=self.v_u)
+                    for action in self.get_actions(state_repr=s_repr)
+                ]
+            )
+        else:
+            raise ValueError(
+                "Don't recognize the value state function type: {}".format(_type)
+            )
 
     def cost(self, state, action):
         """Return cost of taking action in this state."""
@@ -576,7 +568,6 @@ class E2E_BRTDP:
         for a in action:
             if a != (0, 0):
                 cost += self.action_cost
-
         return cost
 
     def get_expected_diff(self, start_state, action):
@@ -590,15 +581,9 @@ class E2E_BRTDP:
         # Get expected diff.
         b = {
             s_repr: 1.0
-            * (self.v_u[((s_repr), self.subtask)] - self.v_l[((s_repr), self.subtask)])
+            * (self.v_u[(s_repr, self.subtask)] - self.v_l[(s_repr, self.subtask)])
         }
         return b
-
-    def reset_value_caches(self, subtask):
-        for state, action in list(self.v_l.keys()):
-            if action == subtask:
-                del self.v_l[(state, action)]
-                del self.v_u[(state, action)]
 
     def _get_modified_state_with_other_agent_actions(self, state):
         """Do nothing if the planner level is level 0.
@@ -664,13 +649,7 @@ class E2E_BRTDP:
         self.value_init(env_state=modified_state)
         return modified_state, other_agent_actions
 
-    def get_next_action(
-        self,
-        env,
-        subtask,
-        subtask_agent_names,
-        other_agent_planners,
-    ):
+    def get_next_action(self, env, subtask, subtask_agent_names, other_agent_planners):
         """Return next action."""
         print("-------------[e2e]-----------")
         self.removed_object = None
@@ -692,21 +671,13 @@ class E2E_BRTDP:
         # BRTDP main loop.
         actions = self.get_actions(state_repr=cur_state.get_repr())
         action_index = argmin(
-            [
-                self.Q(
-                    state=cur_state,
-                    action=a,
-                    value_f=self.v_l,
-                )
-                for a in actions
-            ]
+            [self.Q(state=cur_state, action=a, value_f=self.v_l) for a in actions]
         )
         a = actions[action_index]
         B = sum(self.get_expected_diff(cur_state, a).values())
-
         diff = (
-            self.v_u[((cur_state.get_repr()), self.subtask)]
-            - self.v_l[((cur_state.get_repr()), self.subtask)]
+            self.v_u[(cur_state.get_repr(), self.subtask)]
+            - self.v_l[(cur_state.get_repr(), self.subtask)]
         ) / self.tau
         self.cur_state = cur_state
         if B > diff:
@@ -715,42 +686,26 @@ class E2E_BRTDP:
 
         # Determine best action after BRTDP.
         if self.is_goal_state(cur_state.get_repr()):
-            print("already at goal state...")
+            print("already at goal state, self.cur_obj_count:", self.cur_obj_count)
             return None
         else:
             actions = self.get_actions(state_repr=cur_state.get_repr())
             qvals = [
-                self.Q(
-                    state=cur_state,
-                    action=a,
-                    value_f=self.v_l,
-                )
-                for a in actions
+                self.Q(state=cur_state, action=a, value_f=self.v_l) for a in actions
             ]
-
             print([x for x in zip(actions, qvals)])
-            print(
-                "upper is",
-                self.v_u[
-                    (
-                        (cur_state.get_repr()),
-                        self.subtask,
-                    )
-                ],
-            )
-            print(
-                "lower is",
-                self.v_l[
-                    (
-                        (cur_state.get_repr()),
-                        self.subtask,
-                    )
-                ],
-            )
+            print("upper is", self.v_u[(cur_state.get_repr(), self.subtask)])
+            print("lower is", self.v_l[(cur_state.get_repr(), self.subtask)])
 
             action_index = argmin(np.array(qvals))
-            action = actions[action_index]
+            a = actions[action_index]
 
-            print("chose action:", action)
-            print("cost:", self.cost(cur_state, action))
-            return action
+            print("chose action:", a)
+            print("cost:", self.cost(cur_state, a))
+            return a
+
+    def reset_value_caches(self, subtask):
+        for state, action in list(self.v_l.keys()):
+            if action == subtask:
+                del self.v_l[(state, action)]
+                del self.v_u[(state, action)]

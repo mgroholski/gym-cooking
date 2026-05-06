@@ -269,6 +269,7 @@ class BayesianDelegator(Delegator):
         actions_tm1,
         subtask,
         subtask_agent_names,
+        agent_name,
         beta,
         no_level_1,
     ):
@@ -288,8 +289,8 @@ class BayesianDelegator(Delegator):
             performing subtask.
         """
         print(
-            "[BayesianDelgation.prob_nav_actions] Calculating probs for subtask {} by {}".format(
-                str(subtask), " & ".join(subtask_agent_names)
+            "[BayesianDelgation.prob_nav_actions] Calculating probs for subtask {} by {} as {}".format(
+                str(subtask), " & ".join(subtask_agent_names), agent_name
             )
         )
         assert len(subtask_agent_names) == 1 or len(subtask_agent_names) == 2
@@ -298,18 +299,10 @@ class BayesianDelegator(Delegator):
         if subtask is None:
             assert len(subtask_agent_names) != 2, "Two agents are doing None."
             sim_agent = list(
-                filter(lambda a: a.name == self.agent_name, obs_tm1.sim_agents)
+                filter(lambda a: a.name == agent_name, obs_tm1.sim_agents)
             )[0]
             # Get the number of possible actions at obs_tm1 available to agent.
-            num_actions = (
-                len(
-                    get_single_actions(
-                        env=obs_tm1,
-                        agent=sim_agent,
-                    )
-                )
-                - 1
-            )
+            num_actions = len(get_single_actions(env=obs_tm1, agent=sim_agent)) - 1
             action_prob = (1.0 - self.none_action_prob) / (
                 num_actions
             )  # exclude (0, 0)
@@ -327,24 +320,16 @@ class BayesianDelegator(Delegator):
         action = tuple([actions_tm1[a_name] for a_name in subtask_agent_names])
         if len(subtask_agent_names) == 1:
             action = action[0]
-
         state, other_planners = self.get_appropriate_state_and_other_agent_planners(
-            obs_tm1=obs_tm1,
-            backup_subtask=subtask,
-            no_level_1=no_level_1,
+            obs_tm1=obs_tm1, backup_subtask=subtask, no_level_1=no_level_1
         )
-
         self.planner.set_settings(
             env=obs_tm1,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
             other_agent_planners=other_planners,
         )
-        old_q = self.planner.Q(
-            state=state,
-            action=action,
-            value_f=self.planner.v_l,
-        )
+        old_q = self.planner.Q(state=state, action=action, value_f=self.planner.v_l)
 
         # Collect actions the agents could have taken in obs_tm1.
         valid_nav_actions = self.planner.get_actions(state_repr=obs_tm1.get_repr())
@@ -360,8 +345,8 @@ class BayesianDelegator(Delegator):
 
         # If subtask allocation is joint, then find joint actions that match what the other
         # agent's action_tm1.
-        if len(subtask_agent_names) == 2 and self.agent_name in subtask_agent_names:
-            other_index = 1 - subtask_agent_names.index(self.agent_name)
+        if len(subtask_agent_names) == 2 and agent_name in subtask_agent_names:
+            other_index = 1 - subtask_agent_names.index(agent_name)
             valid_nav_actions = list(
                 filter(
                     lambda x: x[other_index] == action[other_index], valid_nav_actions
@@ -371,14 +356,11 @@ class BayesianDelegator(Delegator):
         # Calculating the softmax Q_{subtask} for each action.
         qdiffs = [
             old_q
-            - self.planner.Q(
-                state=state,
-                action=nav_action,
-                value_f=self.planner.v_l,
-            )
+            - self.planner.Q(state=state, action=nav_action, value_f=self.planner.v_l)
             for nav_action in valid_nav_actions
         ]
         softmax_diffs = sp.special.softmax(beta * np.asarray(qdiffs))
+
         # Taking the softmax of the action actually taken.
         return softmax_diffs[valid_nav_actions.index(action)]
 
@@ -608,23 +590,24 @@ class BayesianDelegator(Delegator):
             return
 
         ta_set = self.probs.enumerate_subtask_allocs()
-
         for task_alloc in ta_set:
             update = 0.0
             for t in task_alloc:
-                p = self.prob_nav_actions(
-                    obs_tm1=copy.copy(obs_tm1),
-                    actions_tm1=actions_tm1,
-                    subtask=t.subtask,
-                    subtask_agent_names=t.subtask_agent_names,
-                    beta=beta,
-                    no_level_1=False,
-                )  # P(a_t | s_t, ta)
+                for agent_name in t.subtask_agent_names:
+                    p = self.prob_nav_actions(
+                        obs_tm1=copy.copy(obs_tm1),
+                        actions_tm1=actions_tm1,
+                        subtask=t.subtask,
+                        subtask_agent_names=t.subtask_agent_names,
+                        agent_name=agent_name,
+                        beta=beta,
+                        no_level_1=False,
+                    )  # P(a_t | s_t, ta)
 
-                if p != 0:
-                    update += len(t.subtask_agent_names) * np.log(p)
-                else:
-                    update += NEG_INF_LOG_VAL
+                    if p != 0:
+                        update += np.log(p)
+                    else:
+                        update += NEG_INF_LOG_VAL
 
             if comm_info is not None:
                 for agent_name, (_, _, comm) in comm_info.items():
