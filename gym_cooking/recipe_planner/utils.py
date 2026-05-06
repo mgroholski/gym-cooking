@@ -151,8 +151,8 @@ class Get(Action):
     def __init__(self, obj, pre=None, post_add=None):
         self.args = (obj,)  # ('Tomato')
 
-        self.pre_default = [Fresh(obj)]
-        self.post_add_default = [Fresh(obj)]
+        self.pre_default = [NoPredicate()]
+        self.post_add_default = [Fresh(obj), NoPredicate()]
         Action.__init__(self, "Get", pre, post_add)
 
 

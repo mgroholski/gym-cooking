@@ -65,7 +65,7 @@ class STRIPSWorld:
                         graph.add_edge(state, next_state, obj=action)
 
                         # as soon as goal is found, break and return
-                        if self.check_goal(next_state) and goal_state is None:
+                        if self.check_goal(next_state, tasks) and goal_state is None:
                             goal_state = next_state
                             return graph, goal_state
 
@@ -83,6 +83,29 @@ class STRIPSWorld:
             sys.exit(1)
 
         return graph, goal_state
+
+    def get_subtask_per_recipe(self, max_path_length=100, draw_graph=False):
+        action_paths = []
+
+        for recipe in self.recipes:
+            graph, goal_state = self.generate_graph([recipe], max_path_length)
+
+            if draw_graph:  # not recommended for path length > 4
+                nx.draw(graph, with_labels=True)
+                plt.show()
+
+            all_state_paths = nx.all_shortest_paths(graph, self.initial, goal_state)
+            union_action_path = set()
+            for state_path in all_state_paths:
+                action_path = [
+                    graph[state_path[i]][state_path[i + 1]]["obj"]
+                    for i in range(len(state_path) - 1)
+                ]
+                union_action_path = union_action_path | set(action_path)
+            # print('all tasks for recipe {}: {}\n'.format(recipe, ', '.join([str(a) for a in union_action_path])))
+            action_paths.append(union_action_path)
+
+        return action_paths
 
     def get_subtask_cnts(self, max_path_length=100, draw_graph=False):
         graph, goal_state = self.generate_graph(self.recipes, max_path_length)
@@ -111,10 +134,10 @@ class STRIPSWorld:
 
         return union_action_path
 
-    def check_goal(self, state):
+    def check_goal(self, state, tasks):
         # check if this state satisfies completion of this recipe
         state_copy = copy.deepcopy(state)
-        for recipe in self.recipes:
+        for recipe in tasks:
             if not state_copy.contains(recipe.goal):
                 return False
             state_copy.delete_predicate(recipe.goal)

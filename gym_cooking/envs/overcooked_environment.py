@@ -109,7 +109,7 @@ class OvercookedEnvironment(gym.Env):
 
     def get_agent_obs(self, agent_idx):
         env_copy = copy.copy(self)
-        if self.arglist.partially_observable and False:
+        if self.arglist.partially_observable:
             # Obfuscates the world
             observable_col_rng = self.sim_agents[agent_idx].observable_cols
 
@@ -130,6 +130,8 @@ class OvercookedEnvironment(gym.Env):
                 <= observable_col_rng[1]
             ]
 
+            if hasattr(env_copy, "obs_tm1") and env_copy.obs_tm1 is not None:
+                env_copy.obs_tm1 = env_copy.obs_tm1.get_agent_obs(agent_idx)
         return env_copy
 
     def load_level(self, level, num_agents):

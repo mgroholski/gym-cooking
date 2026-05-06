@@ -6,10 +6,10 @@ t  -  P
 -  -  o
 -----M-
 
-OnionSalad
-Salad
 SimpleLettuce
 SimpleTomato
+OnionSalad
+Salad
 
 2 1
 5 1

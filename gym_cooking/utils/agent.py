@@ -19,7 +19,7 @@ from termcolor import colored as color
 
 # Other core modules
 from utils.core import CookingPan, Counter, Cutboard
-from utils.utils import agent_settings
+from utils.utils import BeliefState, agent_settings
 
 AgentRepr = namedtuple("AgentRepr", "name location holding")
 
@@ -48,6 +48,7 @@ class RealAgent:
         self.none_action_prob = 0.5
 
         self.world = copy.copy(obs.world)
+        self.belief_state = BeliefState(obs, self.arglist.max_num_subtasks)
 
         self.model_type = agent_settings(arglist, name)
         if self.model_type == "up":
@@ -83,6 +84,7 @@ class RealAgent:
         a.new_subtask_agent_names = self.new_subtask_agent_names
         a.__dict__ = self.__dict__.copy()
         a.incomplete_subtasks = copy.deepcopy(self.incomplete_subtasks)
+        a.belief_state = copy.copy(self.belief_state)
         if self.holding is not None:
             a.holding = copy.copy(self.holding)
         return a
