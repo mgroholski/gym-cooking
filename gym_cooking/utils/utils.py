@@ -1,3 +1,4 @@
+from readline import get_current_history_length
 from typing import Dict
 
 import navigation_planner.utils as nav_utils
@@ -41,6 +42,14 @@ def init_ingredient_belief(obj, obs):
     return 0.5
 
 
+def get_cnt_str(obj):
+    return f"C({obj.full_name})"
+
+
+def get_dispenser_str(obj):
+    return f"D({obj.full_name})"
+
+
 class BeliefState:
     def __init__(self, obs, max_num_subtasks):
         beliefs: Dict[str, float] = {}
@@ -61,19 +70,19 @@ class BeliefState:
                     if is_initial_status_ing(start_obj):
                         obj_p = init_ingredient_belief(start_obj, obs)
                         beliefs[start_obj.full_name] = obj_p
-                        beliefs[f"D({start_obj.full_name})"] = obj_p
+                        beliefs[get_dispenser_str(start_obj)] = obj_p
                     else:
                         beliefs[start_obj.full_name] = 0.0
             else:
                 if is_initial_status_ing(start_objs):
                     obj_p = init_ingredient_belief(start_objs, obs)
                     beliefs[start_objs.full_name] = obj_p
-                    beliefs[f"D({start_objs.full_name})"] = obj_p
+                    beliefs[get_dispenser_str(start_objs)] = obj_p
                 else:
                     beliefs[start_objs.full_name] = 0.0
 
             beliefs[goal_obj.full_name] = init_ingredient_belief(goal_obj, obs)
-            beliefs[f"C({goal_obj.full_name})"] = 0.0
+            beliefs[get_cnt_str(goal_obj)] = 0.0
 
             action_obj = nav_utils.get_subtask_action_obj(subtask)
             if action_obj is not None:
