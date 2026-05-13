@@ -372,6 +372,13 @@ class BeliefState:
         # Set Down Evidence
         for obj in real_objs_set:
             if obj not in expected_objs_set:
+                if obj.is_delivered:
+                    # We remove is_delivered attribute so that we don't make any inferences
+                    # about a delivery station in S^j when it was delivered to a visible
+                    # delivery station.
+                    obj = copy.copy(obj)
+                    obj.is_delivered = False
+
                 return (EvidenceType.SET_DOWN, obj)
 
         # Pick Up Evidence

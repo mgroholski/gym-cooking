@@ -292,6 +292,9 @@ class Object:
         return self.is_merged()
 
     def to_predicate(self):
+        if self.is_delivered:
+            return recipe.Delivered(self.name)
+
         if len(self.contents) == 1:
             content = self.contents[0]
             if isinstance(content, Plate):
