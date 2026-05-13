@@ -183,9 +183,7 @@ def get_obj(obj_string, type_, state, location=(None, None)):
 
 
 def get_subtask_action_obj(subtask):
-    if isinstance(subtask, recipe.Get):
-        obj = get_obj(obj_string=subtask.args[0], type_="is_supply", state=None)
-    elif isinstance(subtask, recipe.Chop):
+    if isinstance(subtask, recipe.Chop):
         obj = get_obj(obj_string="Cutboard", type_="is_supply", state=None)
     elif isinstance(subtask, recipe.Cook):
         obj = get_obj(obj_string="CookingPan", type_="is_supply", state=None)
@@ -204,6 +202,25 @@ def get_subtask_action_obj(subtask):
             )
         )
     return obj
+
+
+def get_predicate_obj(predicate):
+    if isinstance(predicate, recipe.Delivered):
+        food_str = predicate.args[0]
+        ingredients = food_str.split("-")
+
+        ingredient_obj_contents = []
+
+        for ingredient in ingredients:
+            if ingredient == "Plate":
+                ingredient_obj_contents.append(Plate())
+            else:
+                ingredient_obj = StringToObject[ingredient]
+                ingredient_obj_contents.append(ingredient_obj(state_index=-1))
+
+        return Object(location=(-1, -1), contents=ingredient_obj_contents)
+    else:
+        raise NotImplementedError()
 
 
 def get_subtask_obj(subtask):

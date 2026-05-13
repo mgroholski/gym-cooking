@@ -291,6 +291,21 @@ class Object:
                 return False
         return self.is_merged()
 
+    def to_predicate(self):
+        if len(self.contents) == 1:
+            content = self.contents[0]
+            if isinstance(content, Plate):
+                return recipe.Fresh(self.name)
+            else:
+                if content.state == recipe.Fresh:
+                    return recipe.Fresh(self.name)
+                elif content.state == recipe.Chopped:
+                    return recipe.Chopped(self.name)
+                elif content.state == recipe.Cooked:
+                    return recipe.Cooked(self.name)
+        else:
+            return recipe.Merged(self.name)
+
 
 def mergeable(obj1, obj2):
     # query whether two objects are mergeable

@@ -4,7 +4,7 @@ import random
 import numpy as np
 import scipy as sp
 
-NEG_INF_LOG_VAL = np.finfo(float).tiny
+NEG_INF_LOG_VAL = -np.inf
 
 
 class SubtaskAllocDistribution:

@@ -72,6 +72,9 @@ class OvercookedEnvironment(gym.Env):
         new_env.hidden_task_queue = copy.deepcopy(self.hidden_task_queue)
         new_env.world.task_queue = new_env.task_queue
         new_env.comms = copy.deepcopy(self.comms)
+        new_env.agent_actions = copy.deepcopy(self.agent_actions)
+        new_env.recipes = copy.deepcopy(self.recipes)
+        new_env.t = self.t
 
         # Make sure new objects and new agents' holdings have the right pointers.
         for a in new_env.sim_agents:
@@ -122,16 +125,31 @@ class OvercookedEnvironment(gym.Env):
                     <= observable_col_rng[1]
                 ]
 
+            visible_agent_names = set(
+                [
+                    sim_agent.name
+                    for sim_agent in self.sim_agents
+                    if observable_col_rng[0]
+                    <= sim_agent.location[0]
+                    <= observable_col_rng[1]
+                ]
+            )
+
             env_copy.sim_agents = [
                 sim_agent
-                for sim_agent in env_copy.sim_agents
-                if observable_col_rng[0]
-                <= sim_agent.location[0]
-                <= observable_col_rng[1]
+                for sim_agent in self.sim_agents
+                if sim_agent.name in visible_agent_names
             ]
+
+            env_copy.agent_actions = {
+                name: action
+                for name, action in self.agent_actions.items()
+                if name in visible_agent_names
+            }
 
             if hasattr(env_copy, "obs_tm1") and env_copy.obs_tm1 is not None:
                 env_copy.obs_tm1 = env_copy.obs_tm1.get_agent_obs(agent_idx)
+
         return env_copy
 
     def load_level(self, level, num_agents):
@@ -272,8 +290,10 @@ class OvercookedEnvironment(gym.Env):
     def close(self):
         return
 
-    def step(self, action_dict, comm_dict):
+    def step(self, action):
         # Track internal environment info.
+        action_dict, comm_dict = action
+
         self.t += 1
         print("===============================")
         print("[environment.step] @ TIMESTEP {}".format(self.t))

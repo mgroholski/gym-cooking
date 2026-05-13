@@ -16,10 +16,11 @@ from navigation_planner.planners.e2e_brtdp import E2E_BRTDP
 from recipe_planner.stripsworld import STRIPSWorld
 from recipe_planner.utils import *
 from termcolor import colored as color
+from utils.belief import BeliefState
 
 # Other core modules
 from utils.core import CookingPan, Counter, Cutboard
-from utils.utils import BeliefState, agent_settings
+from utils.utils import agent_settings
 
 AgentRepr = namedtuple("AgentRepr", "name location holding")
 
@@ -112,6 +113,14 @@ class RealAgent:
             "Incomplete Subtasks:\n",
             "\n".join([f"\t{str(v)}" for v in self.subtask_to_wrapper_dict.values()]),
         )
+
+        if obs.t > 0:
+            self.belief_state.update(
+                obs=copy.copy(obs),
+                obs_tm1=copy.copy(obs.obs_tm1),
+                a_tm1=obs.agent_actions,
+                ta_probs=copy.copy(self.delegator.probs),
+            )
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs)

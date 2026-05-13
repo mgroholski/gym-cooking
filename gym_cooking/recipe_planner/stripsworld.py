@@ -7,7 +7,7 @@ import networkx as nx
 import recipe_planner.utils as recipe_utils
 
 # core modules
-from utils.core import Object, Plate
+from utils.core import Object
 
 
 class STRIPSWorld:
@@ -18,24 +18,12 @@ class STRIPSWorld:
         # set initial state
         self.initial.add_predicate(recipe_utils.NoPredicate())
 
-        # We need to edit this to consider object with other predicates than fresh.
         for obj in world.get_object_list():
             if isinstance(obj, Object):
                 if obj.is_delivered:
                     continue
-                if len(obj.contents) == 1:
-                    content = obj.contents[0]
-                    if isinstance(content, Plate):
-                        self.initial.add_predicate(recipe_utils.Fresh(obj.name))
-                    else:
-                        if content.state == recipe_utils.Fresh:
-                            self.initial.add_predicate(recipe_utils.Fresh(obj.name))
-                        elif content.state == recipe_utils.Chopped:
-                            self.initial.add_predicate(recipe_utils.Chopped(obj.name))
-                        elif content.state == recipe_utils.Cooked:
-                            self.initial.add_predicate(recipe_utils.Cooked(obj.name))
-                else:
-                    self.initial.add_predicate(recipe_utils.Merged(obj.name))
+
+                self.initial.add_predicate(obj.to_predicate())
 
     def generate_graph(self, tasks, max_path_length):
         all_actions = set()
@@ -84,7 +72,7 @@ class STRIPSWorld:
 
         return graph, goal_state
 
-    def get_subtask_per_recipe(self, max_path_length=100, draw_graph=False):
+    def get_subtask_per_recipe(self, max_path_length=20, draw_graph=False):
         action_paths = []
 
         for recipe in self.recipes:
@@ -107,7 +95,7 @@ class STRIPSWorld:
 
         return action_paths
 
-    def get_subtask_cnts(self, max_path_length=100, draw_graph=False):
+    def get_subtask_cnts(self, max_path_length=20, draw_graph=False):
         graph, goal_state = self.generate_graph(self.recipes, max_path_length)
 
         if draw_graph:  # not recommended for path length > 4

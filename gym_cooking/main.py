@@ -206,7 +206,7 @@ def main_loop(arglist):
             if comm is not None:
                 comm_dict[agent.name] = comm
 
-        obs, _, _, info = env.step(action_dict=action_dict, comm_dict=comm_dict)
+        obs, _, _, info = env.step(action=(action_dict, comm_dict))
 
         # Agents
         for idx, agent in enumerate(real_agents):
