@@ -1,28 +1,19 @@
 # Recipe planning
 import copy
-import random
 import time
-from collections import defaultdict
-from enum import Enum
 from functools import lru_cache
-from itertools import product
 
-# Navigation planning
 import navigation_planner.utils as nav_utils
 import numpy as np
-import scipy as sp
 from navigation_planner.utils import MinPriorityQueue as mpq
-from recipe_planner.utils import *
+from recipe_planner.utils import Deliver
+
+# Navigation planning
+from utils.belief import get_cnt_str
 from utils.core import *
-from utils.interact import interact
 
 # Other core modules
 from utils.world import World
-
-
-class PlannerLevel(Enum):
-    LEVEL1 = 1
-    LEVEL0 = 0
 
 
 def argmin(vector):
@@ -64,16 +55,18 @@ class E2E_BRTDP:
 
         self.v_l = {}
         self.v_u = {}
-        self.repr_to_env_dict = dict()
+
         self.start = None
+        self.start_belief = None
         self.pq = mpq()
         self.actions = World.NAV_ACTIONS
-        self.is_joint = False
-        self.planner_level = PlannerLevel.LEVEL0
         self.cur_object_count = 0
-        self.is_subtask_complete = lambda h: False
+        self.is_subtask_complete = lambda h, b: False
         self.removed_object = None
         self.goal_obj = None
+
+        self.state_repr_to_env = {}
+        self.belief_repr_to_belief = {}
 
         # Setting up costs for value function.
         self.time_cost = 1.0
@@ -87,91 +80,130 @@ class E2E_BRTDP:
         return copy_
 
     @lru_cache(maxsize=10000)
-    def T(self, state_repr, action):
-        """Return next states when taking action from state."""
-        state = self.repr_to_env_dict[state_repr]
-        subtask_agents = self.get_subtask_agents(env_state=state)
+    def T(self, state_repr, belief_repr, action):
+        """Return next states and their probabilities when taking action from state."""
+        state, belief = (
+            self.state_repr_to_env[state_repr],
+            self.belief_repr_to_belief[belief_repr],
+        )
 
-        # Single agent
-        if not self.is_joint:
-            agent = subtask_agents[0]
-            sim_state = copy.copy(state)
-            sim_agent = list(
-                filter(lambda a: a.name == agent.name, sim_state.sim_agents)
-            )[0]
-            sim_agent.action = action
-            interact(agent=sim_agent, world=sim_state.world)
+        base_state = copy.copy(state)
+        base_state.sim_agents[0].action = action
+        a_dict = {base_state.sim_agents[0].name: action}
 
-        # Joint
-        else:
-            agent_1, agent_2 = subtask_agents
-            sim_state = copy.copy(state)
-            sim_agent_1 = list(
-                filter(lambda a: a.name == agent_1.name, sim_state.sim_agents)
-            )[0]
-            sim_agent_2 = list(
-                filter(lambda a: a.name == agent_2.name, sim_state.sim_agents)
-            )[0]
-            sim_agent_1.action, sim_agent_2.action = action
-            interact(agent=sim_agent_1, world=sim_state.world)
-            interact(agent=sim_agent_2, world=sim_state.world)
-            assert sim_agent_1.location != sim_agent_2.location, (
-                "action {} led to state {}".format(action, sim_state.get_repr())
-            )
+        base_state.execute_navigation()
 
-        # Track this state in value function and repr dict
-        # if it's a new state.
-        self.repr_init(env_state=sim_state)
-        self.value_init(env_state=sim_state)
-        return sim_state
+        s_j_area = ((base_state.world.height - 2) * (base_state.world.width - 2)) / 2
+        s_j_area_prob = 1.0 / s_j_area
 
-    def get_actions(self, state_repr):
+        evidence_prob = 0.0
+
+        transition_probs_and_states = []  # (prob, state, belief)
+
+        # For each item in shared_space_locs, we have calculate the
+        # probability of that item being picked up.
+        open_shared_locs = []
+        for loc in base_state.world.shared_space_locs:
+            gs = base_state.world.get_gridsquare_at(loc)
+            if gs.holding is not None:
+                new_state = copy.copy(base_state)
+                new_state_gs = new_state.world.get_gridsquare_at(loc)
+                new_state_gs_holding = new_state_gs.holding
+                new_state.world.remove(new_state_gs_holding)
+                new_state_gs.holding = None
+
+                new_belief = copy.copy(belief)
+                new_belief.update(new_state, state, a_dict, self.ta_probs)
+
+                p = s_j_area_prob
+                evidence_prob += p
+                transition_probs_and_states.append((p, new_state, new_belief))
+            else:
+                open_shared_locs.append(loc)
+
+        # For each item that can exist, we simulate agent j placing
+        # it into the shared counter space.
+        for k, v in belief.get_all_ing_existence_beliefs().items():
+            # We can place the item on any of the open locations
+            if v > 0.0:
+                updated_belief = None
+                for open_shared_loc in open_shared_locs:
+                    new_state = copy.copy(base_state)
+                    new_state_gs = new_state.world.get_gridsquare_at(open_shared_loc)
+
+                    new_state_obj = belief.get_name_to_obj(k)
+                    new_state_obj.location = open_shared_loc
+                    new_state_gs.holding = new_state_obj
+                    new_state.world.insert(new_state_obj)
+
+                    new_belief = None
+                    if updated_belief is None:
+                        updated_belief = copy.copy(belief)
+                        updated_belief.update(new_state, state, a_dict, self.ta_probs)
+                    new_belief = copy.copy(updated_belief)
+
+                    p = s_j_area_prob * v
+                    evidence_prob += p
+                    transition_probs_and_states.append((p, new_state, new_belief))
+
+        # For each task, we simulate agent j delivering the final dish.
+        if belief["Delivery"] > 0.0:
+            for idx, task in enumerate(base_state.task_queue):
+                if not task.is_complete:
+                    new_state = copy.copy(base_state)
+                    new_state.task_queue[idx].is_complete = True
+
+                    goal_obj_name = task.recipe.full_state_plate_name
+                    goal_obj_belief = belief[goal_obj_name]
+                    delivery_belief = belief["Delivery"]
+
+                    new_belief = copy.copy(belief)
+                    new_belief.update(new_state, state, a_dict, self.ta_probs)
+
+                    p = s_j_area_prob * goal_obj_belief * delivery_belief
+                    evidence_prob += p
+                    transition_probs_and_states.append(
+                        (
+                            p,
+                            new_state,
+                            new_belief,
+                        )
+                    )
+
+        # No evidence transition
+        no_evidence_prob = 1 - evidence_prob
+        assert no_evidence_prob >= 0.0
+        base_belief = copy.copy(belief)
+        base_belief.update(base_state, state, a_dict, self.ta_probs)
+        transition_probs_and_states.append((no_evidence_prob, base_state, base_belief))
+
+        return transition_probs_and_states
+
+    def get_actions(self, state):
         """Returns list of possible actions from current state."""
         if self.subtask is None:
             return [(0, 0)]
-        # Convert repr into an environment object.
-        state = self.repr_to_env_dict[state_repr]
 
-        subtask_agents = self.get_subtask_agents(env_state=state)
-        output_actions = []
-
-        # Return single-agent actions.
-        if not self.is_joint:
-            agent = subtask_agents[0]
-            output_actions = nav_utils.get_single_actions(env=state, agent=agent)
-        # Return joint-agent actions.
-        else:
-            agent_1, agent_2 = subtask_agents
-            valid_actions = list(
-                product(
-                    nav_utils.get_single_actions(env=state, agent=agent_1),
-                    nav_utils.get_single_actions(env=state, agent=agent_2),
-                )
-            )
-            # Only consider action to be valid if agents do not collide.
-            for va in valid_actions:
-                agent1, agent2 = va
-                execute = state.is_collision(
-                    agent1_loc=agent_1.location,
-                    agent2_loc=agent_2.location,
-                    agent1_action=agent1,
-                    agent2_action=agent2,
-                )
-                if all(execute):
-                    output_actions.append(va)
+        agent = state.sim_agents[0]
+        output_actions = nav_utils.get_single_actions(env=state, agent=agent)
         return output_actions
 
     def runSampleTrial(self):
         """runSampleTrial from BRTDP paper."""
         start_time = time.time()
-        x = self.start
+        x_state, x_belief = self.start, self.start_belief
         traj = nav_utils.Stack()
 
         # Terminating if this takes too long e.g. path is infeasible.
         counter = 0
-        start_repr = self.start.get_repr()
+        start_repr, start_belief_repr = (
+            self.start.get_repr(),
+            self.start_belief.get_repr(),
+        )
+
         diff = (
-            self.v_u[(start_repr, self.subtask)] - self.v_l[(start_repr, self.subtask)]
+            self.v_u[((start_repr, start_belief_repr), self.subtask)]
+            - self.v_l[((start_repr, start_belief_repr), self.subtask)]
         )
         print("DIFF AT START: {}".format(diff))
 
@@ -179,58 +211,48 @@ class E2E_BRTDP:
             counter += 1
             if counter > self.cap:
                 break
-            traj.push(x)
+            traj.push((x_state, x_belief))
 
             # Get repr of current environment state.
-            x_repr = x.get_repr()
-
-            # Get the planner state. If Planner Level is 1, then
-            # modified_state will include the most likely actions of the
-            # other agents. Otherwise, the modified_state will be the same
-            # as state `x`.
-            modified_state, other_agent_actions = (
-                self._get_modified_state_with_other_agent_actions(x)
-            )
-            modified_state_repr = modified_state.get_repr()
+            x_repr, x_belief_repr = self.repr_init(x_state, x_belief)
 
             # Get available actions from this state.
-            actions = self.get_actions(state_repr=modified_state_repr)
+            actions = self.get_actions(state=x_state)
 
             # We pick actions based on expected state.
             new_upper = min(
                 [
-                    self.Q(state=modified_state, action=a, value_f=self.v_u)
+                    self.Q(state=x_state, belief=x_belief, action=a, value_f=self.v_u)
                     for a in actions
                 ]
             )
-            self.v_u[(modified_state_repr, self.subtask)] = new_upper
+            self.v_u[((x_repr, x_belief_repr), self.subtask)] = new_upper
 
             action_index = argmin(
                 [
-                    self.Q(state=modified_state, action=a, value_f=self.v_l)
+                    self.Q(state=x_state, belief=x_belief, action=a, value_f=self.v_l)
                     for a in actions
                 ]
             )
             a = actions[action_index]
 
-            new_lower = self.Q(state=modified_state, action=a, value_f=self.v_l)
-            self.v_l[(modified_state_repr, self.subtask)] = new_lower
+            new_lower = self.Q(
+                state=x_state, belief=x_belief, action=a, value_f=self.v_l
+            )
+            self.v_l[((x_repr, x_belief_repr), self.subtask)] = new_lower
 
-            b = self.get_expected_diff(modified_state, a)
+            b = self.get_expected_diff(x_state.get_repr(), x_belief.get_repr(), a)
             B = sum(b.values())
             diff = (
-                self.v_u[(start_repr, self.subtask)]
-                - self.v_l[(start_repr, self.subtask)]
+                self.v_u[((start_repr, start_belief_repr), self.subtask)]
+                - self.v_l[((start_repr, start_belief_repr), self.subtask)]
             ) / self.tau
             if B <= diff:
                 break
 
-            x = self.repr_to_env_dict[list(b.keys())[0]]
-
             # Track this new state in repr dict and value function
             # if it's new.
-            self.repr_init(env_state=x)
-            self.value_init(env_state=x)
+            self.value_init(env_state=x_state, belief_state=x_belief)
 
         print(
             "RUN SAMPLE EXPLORED {} STATES, took {}".format(
@@ -238,30 +260,39 @@ class E2E_BRTDP:
             )
         )
         while not (traj.empty()):
-            x = traj.pop()
-            x_repr = x.get_repr()
-            actions = self.get_actions(state_repr=x_repr)
-            self.v_u[(x_repr, self.subtask)] = min(
-                [self.Q(state=x, action=a, value_f=self.v_u) for a in actions]
+            x_state, x_belief = traj.pop()
+            x_repr, x_belief_tuple = x_state.get_repr(), x_belief.get_repr()
+            actions = self.get_actions(state=x_state)
+            self.v_u[((x_repr, x_belief_tuple), self.subtask)] = min(
+                [
+                    self.Q(state=x_state, belief=x_belief, action=a, value_f=self.v_u)
+                    for a in actions
+                ]
             )
-            self.v_l[(x_repr, self.subtask)] = min(
-                [self.Q(state=x, action=a, value_f=self.v_l) for a in actions]
+            self.v_l[((x_repr, x_belief_tuple), self.subtask)] = min(
+                [
+                    self.Q(state=x_state, belief=x_belief, action=a, value_f=self.v_l)
+                    for a in actions
+                ]
             )
 
     def main(self):
         """Main loop function for BRTDP."""
         main_counter = 0
-        start_repr = self.start.get_repr()
+        start_repr, start_belief_repr = (
+            self.start.get_repr(),
+            self.start_belief.get_repr(),
+        )
 
-        upper = self.v_u[(start_repr, self.subtask)]
-        lower = self.v_l[(start_repr, self.subtask)]
+        upper = self.v_u[((start_repr, start_belief_repr), self.subtask)]
+        lower = self.v_l[((start_repr, start_belief_repr), self.subtask)]
         diff = upper - lower
 
         # Run until convergence or until you max out on iteration
         while (diff > self.alpha) and (main_counter < self.main_cap):
             print("\nstarting main loop #", main_counter)
-            new_upper = self.v_u[(start_repr, self.subtask)]
-            new_lower = self.v_l[(start_repr, self.subtask)]
+            new_upper = self.v_u[((start_repr, start_belief_repr), self.subtask)]
+            new_lower = self.v_l[((start_repr, start_belief_repr), self.subtask)]
             new_diff = new_upper - new_lower
             if new_diff > diff + 0.01:
                 self.start.update_display()
@@ -276,41 +307,11 @@ class E2E_BRTDP:
             print("diff = {}, self.alpha = {}".format(diff, self.alpha))
             self.runSampleTrial()
 
-    def _configure_planner_level(self, env, subtask_agent_names, other_agent_planners):
-        """Configure the planner s.t. it best responds to other agents as needed.
-
-        If other_agent_planners is an emtpy dict, then this planner should
-        be a level-0 planner and remove all irrelevant agents in env.
-
-        Otherwise, it should keep all agents and maintain their planners
-        which have already been configured to the subtasks we believe them to
-        have."""
-        # Level 1 planner
-        if other_agent_planners:
-            self.planner_level = PlannerLevel.LEVEL1
-            self.other_agent_planners = other_agent_planners
-        # Level 0 Planner.
-        else:
-            self.planner_level = PlannerLevel.LEVEL0
-            self.other_agent_planners = {}
-            # Replace other agents with counters (frozen agents during planning).
-            rm_agents = []
-            for agent in env.sim_agents:
-                if agent.name not in subtask_agent_names:
-                    rm_agents.append(agent)
-            for agent in rm_agents:
-                env.sim_agents.remove(agent)
-                if agent.holding is not None:
-                    self.removed_object = agent.holding
-                    env.world.remove(agent.holding)
-
-                # Remove Floor and replace with Counter. This is needed when
-                # checking whether object @ location is collidable.
-                env.world.remove(Floor(agent.location))
-                env.world.insert(AgentCounter(agent.location))
-
-    def _configure_subtask_information(self, subtask, subtask_agent_names):
+    def _configure_subtask_information(self, subtask, subtask_agent_names, ta_probs):
         """Tracking information about subtask allocation."""
+        # Task Allocation Distribution
+        self.ta_probs = copy.copy(ta_probs)
+
         # Subtask allocation
         self.subtask = subtask
         self.subtask_agent_names = subtask_agent_names
@@ -323,125 +324,48 @@ class E2E_BRTDP:
         """Defining a goal state (termination condition on state) for subtask."""
 
         if subtask is None:
-            self.is_goal_state = lambda h: True
+            self.is_goal_state = lambda h, b: True
 
         # Termination condition is when desired object is at a Deliver location.
         elif isinstance(subtask, Deliver):
-            self.cur_obj_count = len(
-                list(
-                    filter(
-                        lambda o: (
-                            o
-                            in set(
-                                env.world.get_all_object_locs(self.subtask_action_obj)
-                            )
-                        ),
-                        env.world.get_object_locs(self.goal_obj, is_held=False),
-                    )
-                )
-            )
-            self.has_more_obj = lambda x: int(x) > self.cur_obj_count
-            self.is_goal_state = lambda h: self.has_more_obj(
-                len(
-                    list(
-                        filter(
-                            lambda o: (
-                                o
-                                in set(
-                                    env.world.get_all_object_locs(
-                                        self.subtask_action_obj
-                                    )
-                                )
-                            ),
-                            self.repr_to_env_dict[h].world.get_object_locs(
-                                self.goal_obj, is_held=False
-                            ),
-                        )
-                    )
-                )
+            self.task_idx = next(
+                (
+                    i
+                    for i, t in enumerate(env.task_queue)
+                    if t.goal == self.goal_obj.to_predicate() and not t.is_complete
+                ),
+                None,
             )
 
-            if self.removed_object is not None and self.removed_object == self.goal_obj:
-                self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(
-                        list(
-                            filter(
-                                lambda o: (
-                                    o
-                                    in set(
-                                        env.world.get_all_object_locs(
-                                            self.subtask_action_obj
-                                        )
-                                    )
-                                ),
-                                w.get_object_locs(self.goal_obj, is_held=False),
-                            )
-                        )
-                    )
-                    + 1
-                )
-            else:
-                self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(
-                        list(
-                            filter(
-                                lambda o: (
-                                    o
-                                    in set(
-                                        env.world.get_all_object_locs(
-                                            self.subtask_action_obj
-                                        )
-                                    )
-                                ),
-                                w.get_object_locs(obj=self.goal_obj, is_held=False),
-                            )
-                        )
-                    )
-                )
+            def delivered_goal_state(w, b):
+                return w.task_queue[self.task_idx].is_complete
+
+            self.is_goal_state = lambda e, b: delivered_goal_state(e.world, b)
+            self.is_subtask_complete = delivered_goal_state
         else:
             # Get current count of desired objects.
             self.cur_obj_count = len(env.world.get_all_object_locs(self.goal_obj))
             # Goal state is reached when the number of desired objects has increased.
             self.has_more_obj = lambda x: int(x) > self.cur_obj_count
-            self.is_goal_state = lambda h: self.has_more_obj(
-                len(self.repr_to_env_dict[h].world.get_all_object_locs(self.goal_obj))
-            )
-            if self.removed_object is not None and self.removed_object == self.goal_obj:
-                self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(w.get_all_object_locs(self.goal_obj)) + 1
-                )
-            else:
-                self.is_subtask_complete = lambda w: self.has_more_obj(
-                    len(w.get_all_object_locs(self.goal_obj))
-                )
 
-    def _configure_planner_space(self, subtask_agent_names):
-        """Configure planner to either plan in joint space or single-agent space."""
-        assert len(subtask_agent_names) <= 2, (
-            "Cannot have more than 2 agents! Hm... {}".format(subtask_agents)
-        )
+            def is_goal_state(w, b):
+                return (
+                    self.has_more_obj(len(w.get_all_object_locs(self.goal_obj)))
+                    or b[get_cnt_str(self.goal_obj)] == 1.0
+                )  # Observable objects or 1.0 belief
 
-        self.is_joint = len(subtask_agent_names) == 2
+            self.is_goal_state = lambda e, b: is_goal_state(e.world, b)
+            self.is_subtask_complete = is_goal_state
 
-    def set_settings(self, env, subtask, subtask_agent_names, other_agent_planners={}):
+    def set_settings(self, env, belief, ta_probs, subtask, subtask_agent_names):
         """Configure planner."""
-        # Configuring the planner level.
-        self._configure_planner_level(
-            env=env,
-            subtask_agent_names=subtask_agent_names,
-            other_agent_planners=other_agent_planners,
-        )
-
         # Configuring subtask related information.
         self._configure_subtask_information(
-            subtask=subtask, subtask_agent_names=subtask_agent_names
+            subtask=subtask, subtask_agent_names=subtask_agent_names, ta_probs=ta_probs
         )
 
         # Defining what the goal is for this planner.
         self._define_goal_state(env=env, subtask=subtask)
-
-        # Defining the space of the planner (joint or single).
-        self._configure_planner_space(subtask_agent_names=subtask_agent_names)
 
         # Make sure termination counter has been reset.
         self.counter = 0
@@ -451,116 +375,94 @@ class E2E_BRTDP:
 
         # Set start state.
         self.start = copy.copy(env)
-        self.repr_init(env_state=env)
-        self.value_init(env_state=env)
+        self.start_belief = copy.copy(belief)
+        self.value_init(env_state=env, belief_state=belief)
+        self.repr_init(state=env, belief=belief)
 
-    def get_subtask_agents(self, env_state):
-        """Return subtask agent for this planner given state."""
-        subtask_agents = list(
-            filter(lambda a: a.name in self.subtask_agent_names, env_state.sim_agents)
-        )
+    def repr_init(self, state, belief):
+        state_repr, belief_repr = state.get_repr(), belief.get_repr()
+        if state_repr not in self.state_repr_to_env:
+            self.state_repr_to_env[state_repr] = state
 
-        assert list(map(lambda a: a.name, subtask_agents)) == list(
-            self.subtask_agent_names
-        ), "subtask agent names are not in order: {} != {}".format(
-            list(map(lambda a: a.name, subtask_agents)), self.subtask_agent_names
-        )
+        if belief_repr not in self.belief_repr_to_belief:
+            self.belief_repr_to_belief[belief_repr] = belief
 
-        return subtask_agents
+        return state_repr, belief_repr
 
-    def repr_init(self, env_state):
-        """Initialize repr for environment state."""
-        es_repr = env_state.get_repr()
-        if es_repr not in self.repr_to_env_dict:
-            self.repr_to_env_dict[es_repr] = copy.copy(env_state)
-        return es_repr
-
-    def value_init(self, env_state):
+    def value_init(self, env_state, belief_state):
         """Initialize value for environment state."""
         # Skip if already initialized.
-        es_repr = env_state.get_repr()
-        if (es_repr, self.subtask) in self.v_l and (es_repr, self.subtask) in self.v_u:
+        es_repr, belief_repr = env_state.get_repr(), belief_state.get_repr()
+        if ((es_repr, belief_repr), self.subtask) in self.v_l and (
+            (es_repr, belief_repr),
+            self.subtask,
+        ) in self.v_u:
             return
 
         # Goal state has value 0.
-        if self.is_goal_state(es_repr):
-            self.v_l[(es_repr, self.subtask)] = 0.0
-            self.v_u[(es_repr, self.subtask)] = 0.0
+        if self.is_goal_state(env_state, belief_state):
+            self.v_l[((es_repr, belief_repr), self.subtask)] = 0.0
+            self.v_u[((es_repr, belief_repr), self.subtask)] = 0.0
             return
 
         # Determine lower bound on this environment state.
-        lower = env_state.get_lower_bound_for_subtask_given_objs(
+        lower = env_state.get_bound_for_subtask_given_objs(
+            belief=belief_state,
             subtask=self.subtask,
             subtask_agent_names=self.subtask_agent_names,
             start_obj=self.start_obj,
             goal_obj=self.goal_obj,
-            subtask_action_obj=self.subtask_action_obj,
+            action_obj=self.subtask_action_obj,
+            _type="lower",
         )
 
-        subtask_agents = self.get_subtask_agents(env_state=env_state)
+        upper = env_state.get_bound_for_subtask_given_objs(
+            belief=belief_state,
+            subtask=self.subtask,
+            subtask_agent_names=self.subtask_agent_names,
+            start_obj=self.start_obj,
+            goal_obj=self.goal_obj,
+            action_obj=self.subtask_action_obj,
+            _type="upper",
+        )
+
         lower = lower * (self.time_cost + self.action_cost)
+        upper = upper * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
+        if not lower > 0:
+            breakpoint()
         assert lower > 0, "lower: {}, {}, {}".format(
             lower, env_state.display(), env_state.print_agents()
         )
 
-        self.v_l[(es_repr, self.subtask)] = lower - 1.09
-        self.v_u[(es_repr, self.subtask)] = (
-            lower * 5 * (self.time_cost + self.action_cost)
-        )
+        self.v_l[((es_repr, belief_repr), self.subtask)] = lower
+        self.v_u[((es_repr, belief_repr), self.subtask)] = upper
 
-    def Q(self, state, action, value_f):
+    def Q(self, state, belief, action, value_f):
         """Get Q value using value_f of (state, action)."""
         # Q(s,a) = c(x,a) + \sum_{y \in S} P(x, a, y) * v(y)
-        cost = self.cost(state, action)
+        cost = self.cost(state, belief, action)
 
         # Initialize state if it's new.
-        s_repr = self.repr_init(env_state=state)
-        self.value_init(env_state=state)
+        self.value_init(env_state=state, belief_state=belief)
+        state_repr, belief_repr = self.repr_init(state=state, belief=belief)
 
         # Get next state.
-        next_state = self.T(state_repr=s_repr, action=action)
+        next_state_list = self.T(
+            state_repr=state_repr, belief_repr=belief_repr, action=action
+        )
 
-        # Initialize new state if it's new.
-        ns_repr = self.repr_init(env_state=next_state)
-        self.value_init(env_state=next_state)
+        expected_value = 0.0
+        for p, ns, nb in next_state_list:
+            # Initialize new state if it's new.
+            ns_repr, nb_repr = self.repr_init(ns, nb)
+            self.value_init(env_state=ns, belief_state=nb)
+            expected_value += p * value_f[((ns_repr, nb_repr), self.subtask)]
 
-        expected_value = 1.0 * value_f[(ns_repr, self.subtask)]
         return float(cost + expected_value)
 
-    def V(self, state, _type):
-        """Get V*(x) = min_{a \in A} Q_{v*}(x, a)."""
-
-        # Initialize state if it's new.
-        s_repr = self.repr_init(env_state=state)
-
-        # Check if this is the desired goal state.
-        if self.is_goal_state(s_repr):
-            return 0
-
-        # Use lower bound on value function.
-        if _type == "lower":
-            return min(
-                [
-                    self.Q(state=state, action=action, value_f=self.v_l)
-                    for action in self.get_actions(state_repr=s_repr)
-                ]
-            )
-        # Use upper bound on value function.
-        elif _type == "upper":
-            return min(
-                [
-                    self.Q(state=state, action=action, value_f=self.v_u)
-                    for action in self.get_actions(state_repr=s_repr)
-                ]
-            )
-        else:
-            raise ValueError(
-                "Don't recognize the value state function type: {}".format(_type)
-            )
-
-    def cost(self, state, action):
+    def cost(self, state, belief, action):
         """Return cost of taking action in this state."""
         cost = self.time_cost
         if isinstance(action[0], int):
@@ -570,86 +472,28 @@ class E2E_BRTDP:
                 cost += self.action_cost
         return cost
 
-    def get_expected_diff(self, start_state, action):
+    def get_expected_diff(self, start_state_repr, start_belief_repr, action):
         # Get next state.
-        s_ = self.T(state_repr=start_state.get_repr(), action=action)
+        next_state_list = self.T(
+            state_repr=start_state_repr, belief_repr=start_belief_repr, action=action
+        )
 
-        # Initialize state if it's new.
-        s_repr = self.repr_init(env_state=s_)
-        self.value_init(env_state=s_)
+        b = {}
 
-        # Get expected diff.
-        b = {
-            s_repr: 1.0
-            * (self.v_u[(s_repr, self.subtask)] - self.v_l[(s_repr, self.subtask)])
-        }
+        for p, s_, b_ in next_state_list:
+            # Initialize state if it's new.
+            self.value_init(env_state=s_, belief_state=b_)
+
+            s_repr, b_repr = self.repr_init(s_, b_)
+
+            b[s_repr] = p * (
+                self.v_u[((s_repr, b_repr), self.subtask)]
+                - self.v_l[((s_repr, b_repr), self.subtask)]
+            )
+
         return b
 
-    def _get_modified_state_with_other_agent_actions(self, state):
-        """Do nothing if the planner level is level 0.
-
-        Otherwise, using self.other_agent_planners, anticipate what other agents will do
-        and modify the state appropriately.
-
-        Returns the modified state and the actions of other agents that triggered
-        the change.
-        """
-        modified_state = copy.copy(state)
-        other_agent_actions = {}
-
-        # Do nothing if the planner level is 0.
-        if self.planner_level == PlannerLevel.LEVEL0:
-            return modified_state, other_agent_actions
-
-        # Otherwise, modify the state because Level 1 planners
-        # consider the actions of other agents.
-        for other_agent_name, other_planner in self.other_agent_planners.items():
-            # Keep their recipe subtask & subtask agent fixed, but change
-            # their planner state to `state`.
-            # These new planners should be level 0 planners.
-            other_planner.set_settings(
-                env=copy.copy(state),
-                subtask=other_planner.subtask,
-                subtask_agent_names=other_planner.subtask_agent_names,
-            )
-
-            assert other_planner.planner_level == PlannerLevel.LEVEL0
-
-            # Figure out what their most likely action is.
-            possible_actions = other_planner.get_actions(
-                state_repr=other_planner.start.get_repr()
-            )
-            greedy_action = possible_actions[
-                argmin(
-                    [
-                        other_planner.Q(
-                            state=other_planner.start,
-                            action=action,
-                            value_f=other_planner.v_l,
-                        )
-                        for action in possible_actions
-                    ]
-                )
-            ]
-
-            if other_planner.is_joint:
-                greedy_action = greedy_action[
-                    other_planner.subtask_agent_names.index(other_agent_name)
-                ]
-
-            # Keep track of their actions.
-            other_agent_actions[other_agent_name] = greedy_action
-            other_agent = list(
-                filter(lambda a: a.name == other_agent_name, modified_state.sim_agents)
-            )[0]
-            other_agent.action = greedy_action
-
-        # Initialize state if it's new.
-        self.repr_init(env_state=modified_state)
-        self.value_init(env_state=modified_state)
-        return modified_state, other_agent_actions
-
-    def get_next_action(self, env, subtask, subtask_agent_names, other_agent_planners):
+    def get_next_action(self, env, belief, subtask, subtask_agent_names, ta_probs):
         """Return next action."""
         print("-------------[e2e]-----------")
         self.removed_object = None
@@ -658,50 +502,63 @@ class E2E_BRTDP:
         # Configure planner settings.
         self.set_settings(
             env=env,
+            belief=belief,
+            ta_probs=ta_probs,
             subtask=subtask,
             subtask_agent_names=subtask_agent_names,
-            other_agent_planners=other_agent_planners,
         )
 
-        # Modify the state with other_agent_planners (Level 1 Planning).
-        cur_state, other_agent_actions = (
-            self._get_modified_state_with_other_agent_actions(state=self.start)
-        )
+        cur_state, cur_belief = env, belief
 
         # BRTDP main loop.
-        actions = self.get_actions(state_repr=cur_state.get_repr())
+        actions = self.get_actions(state=cur_state)
         action_index = argmin(
-            [self.Q(state=cur_state, action=a, value_f=self.v_l) for a in actions]
+            [
+                self.Q(state=cur_state, belief=cur_belief, action=a, value_f=self.v_l)
+                for a in actions
+            ]
         )
         a = actions[action_index]
-        B = sum(self.get_expected_diff(cur_state, a).values())
+        B = sum(
+            self.get_expected_diff(
+                cur_state.get_repr(), cur_belief.get_repr(), a
+            ).values()
+        )
         diff = (
-            self.v_u[(cur_state.get_repr(), self.subtask)]
-            - self.v_l[(cur_state.get_repr(), self.subtask)]
+            self.v_u[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)]
+            - self.v_l[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)]
         ) / self.tau
         self.cur_state = cur_state
+        self.cur_belief = cur_belief
         if B > diff:
             print("exploring, B: {}, diff: {}".format(B, diff))
             self.main()
 
         # Determine best action after BRTDP.
-        if self.is_goal_state(cur_state.get_repr()):
+        if self.is_goal_state(cur_state, cur_belief):
             print("already at goal state, self.cur_obj_count:", self.cur_obj_count)
             return None
         else:
-            actions = self.get_actions(state_repr=cur_state.get_repr())
+            actions = self.get_actions(state=cur_state)
             qvals = [
-                self.Q(state=cur_state, action=a, value_f=self.v_l) for a in actions
+                self.Q(state=cur_state, belief=cur_belief, action=a, value_f=self.v_l)
+                for a in actions
             ]
             print([x for x in zip(actions, qvals)])
-            print("upper is", self.v_u[(cur_state.get_repr(), self.subtask)])
-            print("lower is", self.v_l[(cur_state.get_repr(), self.subtask)])
+            print(
+                "upper is",
+                self.v_u[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)],
+            )
+            print(
+                "lower is",
+                self.v_l[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)],
+            )
 
             action_index = argmin(np.array(qvals))
             a = actions[action_index]
 
             print("chose action:", a)
-            print("cost:", self.cost(cur_state, a))
+            print("cost:", self.cost(cur_state, cur_belief, a))
             return a
 
     def reset_value_caches(self, subtask):

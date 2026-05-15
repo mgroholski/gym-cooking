@@ -8,8 +8,10 @@ import recipe_planner.utils as recipe_utils
 from delegation_planner.utils import NEG_INF_LOG_VAL
 from recipe_planner.recipe import Recipe
 from recipe_planner.stripsworld import STRIPSWorld
-from utils.core import Lettuce, Object, Plate
+from utils.core import Object, Plate
 from utils.world import World
+
+UNCERTAIN_INIT_PROB = 0.0
 
 
 class EvidenceType(Enum):
@@ -30,7 +32,7 @@ def init_ingredient_belief(obj, obs):
     """
     1. If object is is not in initial state, then b(x_m) = 0
     2. If object is in initial state and not reachable by agent then, b(x_m) = 1
-    3. Otherwise, b(x_m) = 0.5
+    3. Otherwise, b(x_m) = UNCERTAIN_INIT_PROB
     """
 
     if not is_initial_status_ing(obj):
@@ -40,7 +42,7 @@ def init_ingredient_belief(obj, obs):
     if not len(obs.world.get_all_object_locs(obj)):
         return 1.0
 
-    return 0.5
+    return UNCERTAIN_INIT_PROB
 
 
 def get_cnt_str(obj):
@@ -80,6 +82,8 @@ class BeliefState:
         self.cnt_key_set = set()
         self.sum_cnt_key_set = set()
 
+        self.name_to_obj = dict()
+
         self.G_x = {}
 
         self.cur_agent = obs.sim_agents[0]
@@ -100,16 +104,19 @@ class BeliefState:
                     if start_obj.full_name not in self.G_x:
                         self.G_x[start_obj.full_name] = set()
                     self.G_x[start_obj.full_name].add(goal_obj.full_name)
+                    self.name_to_obj[start_obj.full_name] = start_obj
 
                 self.beliefs[goal_obj.full_name] = init_ingredient_belief(goal_obj, obs)
+                self.name_to_obj[goal_obj.full_name] = goal_obj
 
                 action_obj = nav_utils.get_subtask_action_obj(subtask)
                 if action_obj is not None:
                     self.beliefs[action_obj.name] = (
                         1.0
                         if not len(obs.world.get_all_object_locs(action_obj))
-                        else 0.5
+                        else UNCERTAIN_INIT_PROB
                     )
+                    self.name_to_obj[action_obj.name] = action_obj
 
         # Converts all probs to log probs
         for k, v in self.beliefs.items():
@@ -117,6 +124,12 @@ class BeliefState:
                 self.beliefs[k] = np.log(v)
             else:
                 self.beliefs[k] = NEG_INF_LOG_VAL
+
+    def get_repr(self):
+        return tuple(
+            [o.get_repr() for o in self.taken_list]
+            + sorted([(k, v) for k, v in self.beliefs.items()])
+        )
 
     def _order_recipe_subtasks(self, subtask_set):
         goal_obj_dict = {}
@@ -194,8 +207,15 @@ class BeliefState:
             self.taken_list.append(obj)
 
     def update(self, obs, obs_tm1, a_tm1, ta_probs):
-        self.b_tm1 = copy.deepcopy(self)
+        self.b_tm1 = copy.copy(self)
         evidence_type, evidence_obj = self.get_evidence(obs, obs_tm1, a_tm1)
+
+        print(f"[{self.cur_agent} Belief Update] Evidence of type {evidence_type}.")
+
+        if evidence_type != EvidenceType.NONE:
+            print(
+                f"[{self.cur_agent} Belief Update] Evidence object is {evidence_obj.full_name}"
+            )
 
         if evidence_type == EvidenceType.PICK_UP:
             self._add_to_taken_list(evidence_obj)
@@ -251,6 +271,8 @@ class BeliefState:
             for k, _ in self.beliefs.items():
                 if k in exclude_set:
                     continue
+
+                print(f"[{self.cur_agent} Belief Update] Updating {k}...")
 
                 if k in self.ing_key_set or k in self.initial_ing_key_set:
                     if k in self.initial_ing_key_set:
@@ -319,9 +341,7 @@ class BeliefState:
                     self.cur_agent not in t.subtask_agent_names
                     and t.subtask is not None
                 ):
-                    """
-                    We use only other agent because this is over S^j.
-                    """
+                    # We use only other the agent because this is over S^j.
                     item_prob = []
                     is_goal_obj = False
 
@@ -361,17 +381,17 @@ class BeliefState:
         obs_tm1.execute_navigation()
         expected_obs_t = obs_tm1
 
-        expected_objs_set = set(
-            [o for o_type in expected_obs_t.world.get_dynamic_objects() for o in o_type]
-        )
+        expected_objs_list = [
+            o for o_type in expected_obs_t.world.get_dynamic_objects() for o in o_type
+        ]
 
-        real_objs_set = set(
-            [o for o_type in obs_t.world.get_dynamic_objects() for o in o_type]
-        )
+        real_objs_list = [
+            o for o_type in obs_t.world.get_dynamic_objects() for o in o_type
+        ]
 
         # Set Down Evidence
-        for obj in real_objs_set:
-            if obj not in expected_objs_set:
+        for obj in real_objs_list:
+            if obj not in expected_objs_list:
                 if obj.is_delivered:
                     # We remove is_delivered attribute so that we don't make any inferences
                     # about a delivery station in S^j when it was delivered to a visible
@@ -382,8 +402,8 @@ class BeliefState:
                 return (EvidenceType.SET_DOWN, obj)
 
         # Pick Up Evidence
-        for obj in expected_objs_set:
-            if obj not in real_objs_set:
+        for obj in expected_objs_list:
+            if obj not in real_objs_list:
                 return (EvidenceType.PICK_UP, obj)
 
         # Delivery Evidence
@@ -408,15 +428,18 @@ class BeliefState:
         return np.exp(sum(self.beliefs.values()))
 
     def get_existence_prob(self, obj):
-        return np.exp(self.beliefs[obj.full_name])
+        return self.get_prob_by_key(obj.full_name)
 
     def get_dispenser_prob(self, obj):
-        return np.exp(self.beliefs[get_dispenser_str(obj)])
+        return self.get_prob_by_key(get_dispenser_str(obj))
 
     def get_cnt_prob(self, obj):
-        return np.exp(self.beliefs[get_cnt_str(obj)])
+        return self.get_prob_by_key(get_cnt_str(obj))
 
     def get_prob_by_key(self, key):
+        return np.exp(self.beliefs[key])
+
+    def __getitem__(self, key):
         return np.exp(self.beliefs[key])
 
     def _get_log_prob_by_key(self, key):
@@ -426,3 +449,27 @@ class BeliefState:
         print("Belief Values: ")
         for k, v in self.beliefs.items():
             print(f"\t{k}: {np.exp(v)}")
+
+    def get_name_to_obj(self, name):
+        if name not in self.name_to_obj:
+            raise Exception(f"{name} is not in name_to_obj dict!")
+
+        return copy.copy(self.name_to_obj[name])
+
+    def __copy__(self):
+        return copy.deepcopy(self)
+
+    def get_all_ing_existence_beliefs(self):
+        existence_beliefs = {}
+        for k in self.beliefs.keys():
+            if k in nav_utils.StringToObject or k == "Plate":
+                existence_beliefs[k] = self.get_prob_by_key(k)
+
+        return existence_beliefs
+
+    def __str__(self):
+        s = ""
+        for k, v in self.beliefs.items():
+            s += f"\t{k}: {np.exp(v)}\n"
+
+        return s

@@ -16,10 +16,9 @@ from navigation_planner.planners.e2e_brtdp import E2E_BRTDP
 from recipe_planner.stripsworld import STRIPSWorld
 from recipe_planner.utils import *
 from termcolor import colored as color
-from utils.belief import BeliefState
+from utils.belief import BeliefState, get_cnt_str
 
 # Other core modules
-from utils.core import CookingPan, Counter, Cutboard
 from utils.utils import agent_settings
 
 AgentRepr = namedtuple("AgentRepr", "name location holding")
@@ -44,7 +43,7 @@ class RealAgent:
         self.incomplete_subtasks = []
         self.subtask_to_wrapper_dict = {}
         self.signal_reset_delegator = False
-        self.is_subtask_complete = lambda w: False
+        self.is_subtask_complete = lambda w, b: False
         self.beta = arglist.beta
         self.none_action_prob = 0.5
 
@@ -103,12 +102,13 @@ class RealAgent:
         self.action = sim_agent.action
 
         if obs.t == 0:
-            self.setup_subtasks(env=obs)
+            self.setup_subtasks(env=obs, belief=self.belief_state)
 
         print("===============================")
         print(f"[{self.name}.select_action] @ TIMESTEP {obs.t}")
         print("===============================")
         print(f"Pre-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}")
+        print(f"Pre-Update Beliefs:\n{str(self.belief_state)}")
         print(
             "Incomplete Subtasks:\n",
             "\n".join([f"\t{str(v)}" for v in self.subtask_to_wrapper_dict.values()]),
@@ -122,8 +122,10 @@ class RealAgent:
                 ta_probs=copy.copy(self.delegator.probs),
             )
 
+            print(f"Post-Update Beliefs:\n{str(self.belief_state)}")
+
         # Select subtask based on Bayesian Delegation.
-        self.update_subtasks(env=obs)
+        self.update_subtasks(env=obs, belief=self.belief_state)
         self.new_subtask, self.new_subtask_agent_names, self.new_task_alloc = (
             self.delegator.select_subtask(
                 agent_name=self.name,
@@ -151,7 +153,7 @@ class RealAgent:
             return self.comm_func.speak(self.name, obs, self.task_alloc)
         return None
 
-    def get_subtasks(self, world) -> Dict:
+    def get_subtasks(self, world, belief) -> Dict:
         """Return different subtask permutations for active orders."""
 
         active_tasks = list(getattr(world, "task_queue", []))
@@ -163,7 +165,7 @@ class RealAgent:
         if not len(recipes):
             return {}
 
-        self.sw = STRIPSWorld(world, recipes)
+        self.sw = STRIPSWorld(world, recipes, belief)
         # [path for recipe 1, path for recipe 2, ...] where each path is a list of actions.
         subtask_cnts = self.sw.get_subtask_cnts(
             max_path_length=self.arglist.max_num_subtasks
@@ -175,10 +177,10 @@ class RealAgent:
 
         return all_subtasks
 
-    def setup_subtasks(self, env):
+    def setup_subtasks(self, env, belief):
         """Initializing subtasks and subtask allocator, Bayesian Delegation."""
 
-        self.subtask_to_wrapper_dict = self.get_subtasks(env.world)
+        self.subtask_to_wrapper_dict = self.get_subtasks(env.world, belief)
         self.incomplete_subtasks = [k for k in self.subtask_to_wrapper_dict.keys()]
 
         print(
@@ -204,14 +206,15 @@ class RealAgent:
         """Refresh subtasks---relevant for Bayesian Delegation."""
         # Check whether any incomplete subtask is complete.
         self.subtask_complete = False
+        belief = self.belief_state
 
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
-            self.subtask_complete = self.is_subtask_complete(world)
+            self.subtask_complete = self.is_subtask_complete(world, belief)
             print(
                 "{} done with {} according to planner: {}\nplanner has subtask {} with subtask object {}".format(
                     color(self.name, self.color),
                     self.subtask,
-                    self.is_subtask_complete(world),
+                    self.is_subtask_complete(world, belief),
                     self.planner.subtask,
                     self.planner.goal_obj,
                 )
@@ -231,18 +234,20 @@ class RealAgent:
             if (
                 incomplete_subtask == self.subtask and self.subtask_complete
             ):  # If the agents have the same subtask and the current agent finish the subtask then we want to check if
-                if self.check_incomplete_subtask(world, incomplete_subtask, cnt=1):
+                if self.check_incomplete_subtask(
+                    world, belief, incomplete_subtask, cnt=1
+                ):
                     self.remove_subtask(incomplete_subtask)
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     break
             else:
-                if self.check_incomplete_subtask(world, incomplete_subtask):
+                if self.check_incomplete_subtask(world, belief, incomplete_subtask):
                     self.remove_subtask(incomplete_subtask)
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
                     break
 
         if self.subtask_removed or len(self.world.task_queue) != len(world.task_queue):
-            self.subtask_to_wrapper_dict = self.get_subtasks(world)
+            self.subtask_to_wrapper_dict = self.get_subtasks(world, belief)
             self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
 
         self.world = copy.copy(world)
@@ -267,11 +272,12 @@ class RealAgent:
         self.subtask_removed = True
         self.delegator.planner.reset_value_caches(subtask)
 
-    def update_subtasks(self, env):
+    def update_subtasks(self, env, belief):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
         if (self.subtask_removed) or (
             self.delegator.should_reset_priors(
                 obs=copy.copy(env),
+                belief=copy.copy(belief),
                 subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
                 incomplete_subtasks=self.incomplete_subtasks,
             )
@@ -279,6 +285,7 @@ class RealAgent:
             self.reset_subtasks()
             self.delegator.set_priors(
                 obs=copy.copy(env),
+                belief=copy.copy(belief),
                 incomplete_subtasks=self.incomplete_subtasks,
                 subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
                 priors_type=self.priors,
@@ -287,6 +294,7 @@ class RealAgent:
             if self.subtask is None:
                 self.delegator.set_priors(
                     obs=copy.copy(env),
+                    belief=self.belief_state,
                     incomplete_subtasks=self.incomplete_subtasks,
                     subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
                     priors_type=self.priors,
@@ -300,6 +308,7 @@ class RealAgent:
 
                 self.delegator.bayes_update(
                     obs_tm1=copy.copy(env.obs_tm1),
+                    b_tm1=copy.copy(belief.b_tm1),
                     actions_tm1=env.agent_actions,
                     comm_info=comm_info,
                     beta=self.beta,
@@ -327,7 +336,7 @@ class RealAgent:
 
         # Check whether this subtask is done.
         if self.new_subtask is not None:
-            self.def_subtask_completion(env=env)
+            self.is_subtask_complete = self.planner.is_subtask_complete
 
         # If subtask is None, then do nothing.
         if (self.new_subtask is None) or (not self.new_subtask_agent_names):
@@ -341,42 +350,19 @@ class RealAgent:
             self.action = actions[np.random.choice(len(actions), p=probs)]
         # Otherwise, plan accordingly.
         else:
-            if self.model_type == "greedy" or initializing_priors:
-                other_agent_planners = {}
-            else:
-                # Determine other agent planners for level 1 planning.
-                # Other agent planners are based on your planner---agents never
-                # share planners.
-                backup_subtask = (
-                    self.new_subtask if self.new_subtask is not None else self.subtask
-                )
-                other_agent_planners = self.delegator.get_other_agent_planners(
-                    obs=copy.copy(env),
-                    backup_subtask=backup_subtask,
-                )
-
             print(
                 "[ {} Planning ] Task: {}, Task Agents: {}".format(
                     self.name, self.new_subtask, self.new_subtask_agent_names
                 )
             )
 
-            action = self.planner.get_next_action(
+            self.action = self.planner.get_next_action(
                 env=env,
+                belief=self.belief_state,
                 subtask=self.new_subtask,
                 subtask_agent_names=self.new_subtask_agent_names,
-                other_agent_planners=other_agent_planners,
+                ta_probs=self.delegator.probs,
             )
-
-            # If joint subtask, pick your part of the simulated joint plan.
-            if self.name not in self.new_subtask_agent_names and self.planner.is_joint:
-                self.action = action[0]
-            else:
-                self.action = (
-                    action[self.new_subtask_agent_names.index(self.name)]
-                    if self.planner.is_joint
-                    else action
-                )
 
         # Update subtask.
         self.subtask = self.new_subtask
@@ -388,9 +374,12 @@ class RealAgent:
 
         print("{} proposed action: {}\n".format(self.name, self.action))
 
-    def check_incomplete_subtask(self, world, subtask, cnt=0):
+    def check_incomplete_subtask(self, world, belief, subtask, cnt=0):
         _, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
         subtask_action_object = nav_utils.get_subtask_action_obj(subtask=subtask)
+
+        goal_obj_cnt_name = get_cnt_str(goal_obj)
+        goal_obj_cnt_belief = belief[goal_obj_cnt_name]
 
         if isinstance(subtask, Deliver):
             # Checks count in the stored world.
@@ -420,64 +409,14 @@ class RealAgent:
                 )
             )
 
-            return new_obj_count > (cur_obj_count + cnt)
+            return (new_obj_count > (cur_obj_count + cnt)) or (
+                goal_obj_cnt_belief == 1.0
+            )
         else:
             cur_obj_cnt = len(self.world.get_all_object_locs(obj=goal_obj))
-            return len(world.get_all_object_locs(obj=goal_obj)) > (cur_obj_cnt + cnt)
-
-    def def_subtask_completion(self, env):
-        # Determine desired objects.
-        self.start_obj, self.goal_obj = nav_utils.get_subtask_obj(
-            subtask=self.new_subtask
-        )
-        self.subtask_action_object = nav_utils.get_subtask_action_obj(
-            subtask=self.new_subtask
-        )
-
-        # Define termination conditions for agent subtask.
-        # For Deliver subtask, desired object should be at a Deliver location.
-        if isinstance(self.new_subtask, Deliver):
-            self.cur_obj_count = len(
-                list(
-                    filter(
-                        lambda o: (
-                            o
-                            in set(
-                                env.world.get_all_object_locs(
-                                    self.subtask_action_object
-                                )
-                            )
-                        ),
-                        env.world.get_object_locs(obj=self.goal_obj, is_held=False),
-                    )
-                )
-            )
-            self.has_more_obj = lambda x: int(x) > self.cur_obj_count
-            self.is_subtask_complete = lambda w: self.has_more_obj(
-                len(
-                    list(
-                        filter(
-                            lambda o: (
-                                o
-                                in set(
-                                    env.world.get_all_object_locs(
-                                        obj=self.subtask_action_object
-                                    )
-                                )
-                            ),
-                            w.get_object_locs(obj=self.goal_obj, is_held=False),
-                        )
-                    )
-                )
-            )
-        # Otherwise, for other subtasks, check based on # of objects.
-        else:
-            # Current count of desired objects.
-            self.cur_obj_count = len(env.world.get_all_object_locs(obj=self.goal_obj))
-            # Goal state is reached when the number of desired objects has increased.
-            self.is_subtask_complete = lambda w: (
-                len(w.get_all_object_locs(obj=self.goal_obj)) > self.cur_obj_count
-            )
+            return (
+                len(world.get_all_object_locs(obj=goal_obj)) > (cur_obj_cnt + cnt)
+            ) or (goal_obj_cnt_belief == 1.0)
 
 
 class SimAgent:

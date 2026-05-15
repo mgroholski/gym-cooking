@@ -11,7 +11,7 @@ from utils.core import Object
 
 
 class STRIPSWorld:
-    def __init__(self, world, recipes):
+    def __init__(self, world, recipes, beliefs=None):
         self.initial = recipe_utils.STRIPSState()
         self.recipes = recipes
 
@@ -24,6 +24,13 @@ class STRIPSWorld:
                     continue
 
                 self.initial.add_predicate(obj.to_predicate())
+
+        if beliefs is not None:
+            existence_beliefs = beliefs.get_all_ing_existence_beliefs()
+            for k, v in existence_beliefs.items():
+                if v == 1.0:
+                    obj = beliefs.get_name_to_obj(k)
+                    self.initial.add_predicate(obj.to_predicate())
 
     def generate_graph(self, tasks, max_path_length):
         all_actions = set()

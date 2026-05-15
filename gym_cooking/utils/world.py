@@ -25,7 +25,7 @@ class World:
         self.task_queue = []
 
     def get_repr(self):
-        return self.get_dynamic_objects() + self.get_task_queue_repr()
+        return self.get_dynamic_objects_repr() + self.get_task_queue_repr()
 
     def get_task_queue_repr(self):
         return OrderQueueRepr(orders=tuple(o.get_repr() for o in self.task_queue))
@@ -123,135 +123,48 @@ class World:
 
         # plt.show()
 
-    def get_lower_bound_between(self, subtask, agent_locs, A_locs, B_locs):
-        """Return distance lower bound between subtask-relevant locations."""
-        lower_bound = self.perimeter + 1
-        for A_loc, B_loc in product(A_locs, B_locs):
-            bound = self.get_lower_bound_between_helper(
-                subtask=subtask, agent_locs=agent_locs, A_loc=A_loc, B_loc=B_loc
-            )
-            if bound < lower_bound:
-                lower_bound = bound
-        return lower_bound
+    def get_dist_bound_helper(self, loc, _type):
+        if _type == "lower":
+            dist = self.perimeter + 1
+            bound_locs = self.shared_space_locs
+            for a, b in product([loc], bound_locs):
+                # Other agent cannot exist at shared location so we add one.
+                dist = min(dist, manhattan_dist(a, b) + 1)
+        elif _type == "upper":
+            dist = 0
+            shared_counters = self.shared_space_locs
+            bound_locs = [
+                (0, 1),
+                (1, 0),
+                (0, self.height - 1),
+                (1, self.height),
+                (self.width - 1, 0),
+                (self.width, 1),
+                (self.width - 1, self.height),
+                (self.width, self.height - 1),
+            ]
 
-    @lru_cache(maxsize=40000)
-    def get_lower_bound_between_helper(self, subtask, agent_locs, A_loc, B_loc):
-        lower_bound = self.perimeter + 1
-        A = self.get_gridsquare_at(A_loc)
-        B = self.get_gridsquare_at(B_loc)
-        A_possible_na = [(0, 0)] if not A.collidable else World.NAV_ACTIONS
-        B_possible_na = [(0, 0)] if not B.collidable else World.NAV_ACTIONS
+            max_dist = 0
+            max_shared_counter = (-1, -1)
 
-        for A_na, B_na in product(A_possible_na, B_possible_na):
-            if len(agent_locs) == 1:
-                try:
-                    bound_1 = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[0], (0, 0)), (A_loc, A_na)
-                    )
-                    bound_2 = nx.shortest_path_length(
-                        self.reachability_graph, (A_loc, A_na), (B_loc, B_na)
-                    )
-                except:
-                    continue
-                bound = bound_1 + bound_2 - 1
+            for bound_loc, shared_counter in product(bound_locs, shared_counters):
+                d = manhattan_dist(bound_loc, shared_counter)
+                if d > max_dist:
+                    max_dist = d
+                    max_shared_counter = shared_counter
 
-            elif len(agent_locs) == 2:
-                # Try to calculate the distances between agents and Objects A and B.
-                # Distance between Agent 1 <> Object A.
-                try:
-                    bound_1_to_A = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[0], (0, 0)), (A_loc, A_na)
-                    )
-                except:
-                    bound_1_to_A = self.perimeter
-                # Distance between Agent 2 <> Object A.
-                try:
-                    bound_2_to_A = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[1], (0, 0)), (A_loc, A_na)
-                    )
-                except:
-                    bound_2_to_A = self.perimeter
+            dist = manhattan_dist(max_shared_counter, loc) - 2 + max_dist * 2
+        else:
+            raise Exception(f"Invalid _type: {_type}")
 
-                # Take the agent that's the closest to Object A.
-                min_bound_to_A = min(bound_1_to_A, bound_2_to_A)
+        return dist
 
-                # Distance between the agents.
-                bound_between_agents = manhattan_dist(A_loc, B_loc)
+    def get_direct_dist_between(self, A_loc, B_locs):
+        dist = self.perimeter + 1
+        for a, b in product([A_loc], B_locs):
+            dist = min(dist, manhattan_dist(a, b))
 
-                # Distance between Agent 1 <> Object B.
-                try:
-                    bound_1_to_B = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[0], (0, 0)), (B_loc, B_na)
-                    )
-                except:
-                    bound_1_to_B = self.perimeter
-
-                # Distance between Agent 2 <> Object B.
-                try:
-                    bound_2_to_B = nx.shortest_path_length(
-                        self.reachability_graph, (agent_locs[1], (0, 0)), (B_loc, B_na)
-                    )
-                except:
-                    bound_2_to_B = self.perimeter
-
-                # Take the agent that's the closest to Object B.
-                min_bound_to_B = min(bound_1_to_B, bound_2_to_B)
-
-                # For chop or deliver, must bring A to B.
-                if isinstance(subtask, recipe.Chop) or isinstance(
-                    subtask, recipe.Deliver
-                ):
-                    bound = min_bound_to_A + bound_between_agents - 1
-                # For merge, agents can separately go to A and B and then meet in the middle.
-                elif isinstance(subtask, recipe.Merge):
-                    min_bound_to_A, min_bound_to_B = self.check_bound(
-                        min_bound_to_A=min_bound_to_A,
-                        min_bound_to_B=min_bound_to_B,
-                        bound_1_to_A=bound_1_to_A,
-                        bound_2_to_A=bound_2_to_A,
-                        bound_1_to_B=bound_1_to_B,
-                        bound_2_to_B=bound_2_to_B,
-                    )
-                    bound = (
-                        max(min_bound_to_A, min_bound_to_B)
-                        + (bound_between_agents - 1) / 2
-                    )
-
-            if bound < lower_bound:
-                lower_bound = bound
-
-        return max(1, lower_bound)
-
-    def check_bound(
-        self,
-        min_bound_to_A,
-        min_bound_to_B,
-        bound_1_to_A,
-        bound_2_to_A,
-        bound_1_to_B,
-        bound_2_to_B,
-    ):
-        # Checking for whether it's the same agent that does the subtask.
-        if (bound_1_to_A == min_bound_to_A and bound_1_to_B == min_bound_to_B) or (
-            bound_2_to_A == min_bound_to_A and bound_2_to_B == min_bound_to_B
-        ):
-            return 2 * min_bound_to_A, 2 * min_bound_to_B
-        return min_bound_to_A, min_bound_to_B
-
-    def is_occupied(self, location):
-        o = list(
-            filter(
-                lambda obj: (
-                    obj.location == location
-                    and isinstance(obj, Object)
-                    and not (obj.is_held)
-                ),
-                self.get_object_list(),
-            )
-        )
-        if o:
-            return True
-        return False
+        return dist
 
     def clear_object(self, position):
         """Clears object @ position in self.rep and replaces it with an empty space"""
@@ -287,7 +200,6 @@ class World:
         return all_obs
 
     def get_dynamic_objects(self):
-        """Get objects that can be moved."""
         objs = list()
 
         for key in sorted(self.objects.keys()):
@@ -299,10 +211,17 @@ class World:
                 and key != "Cutboard"
                 and key != "CookingPan"
             ):
-                objs.append(tuple(list(map(lambda o: o.get_repr(), self.objects[key]))))
+                objs.append(list(self.objects[key]))
 
-        # Must return a tuple because this is going to get hashed.
-        return tuple(objs)
+        return objs
+
+    def get_dynamic_objects_repr(self):
+        return tuple(
+            [
+                tuple([obj.get_repr() for obj in objects])
+                for objects in self.get_dynamic_objects()
+            ]
+        )
 
     def get_collidable_objects(self):
         return list(filter(lambda o: o.collidable, self.get_object_list()))
@@ -320,6 +239,21 @@ class World:
                 list(filter(lambda o: o.collidable, self.get_object_list())),
             )
         )
+
+    def is_occupied(self, location):
+        o = list(
+            filter(
+                lambda obj: (
+                    obj.location == location
+                    and isinstance(obj, Object)
+                    and not (obj.is_held)
+                ),
+                self.get_object_list(),
+            )
+        )
+        if o:
+            return True
+        return False
 
     def process_delivery(self, obj):
         matching_order_idx = next(
@@ -373,6 +307,15 @@ class World:
                     list(filter(lambda o: obj == o, self.objects[obj.name])),
                 )
             )
+
+    def get_all_non_delivered_object_locs(self, obj):
+
+        return list(
+            set(
+                self.get_object_locs(obj=obj, is_held=True)
+                + self.get_object_locs(obj=obj, is_held=False, exclude_delivered=True)
+            )
+        )
 
     def get_all_object_locs(self, obj):
         return list(
