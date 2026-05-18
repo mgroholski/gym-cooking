@@ -99,8 +99,4 @@ class SubtaskAllocDistribution:
         return -entropy
 
     def get_max_entropy(self):
-        n = len(self.probs)
-        if not n:
-            raise Exception("0 probs in distribution.")
-
-        return np.log(n)
+        return np.log(len(self.probs))

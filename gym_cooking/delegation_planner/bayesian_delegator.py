@@ -143,6 +143,7 @@ class BayesianDelegator(Delegator):
         """Removing subtask allocs from subtask_alloc_probs that are
         infeasible or where multiple agents are doing None together.
         """
+
         for subtask_alloc in subtask_alloc_probs.enumerate_subtask_allocs():
             for t in subtask_alloc:
                 # Remove unreachable/undoable subtask subtask_allocations.
@@ -209,6 +210,7 @@ class BayesianDelegator(Delegator):
                             _type="lower",
                         )
                     )
+
             # Weight by number of nonzero subtasks.
             some_probs.update(
                 subtask_alloc=subtask_alloc,
@@ -556,7 +558,7 @@ class BayesianDelegator(Delegator):
                         # If the action isn't visible we marginalize
                         # out the action probability.
                         print(
-                            f"[BayesianDelgation.bayes_update] Marginalizing {agent_name} action due to no obs."
+                            f"[BayesianDelgation.bayes_update] Marginalizing {agent_name} action due to no action in obs."
                         )
                         p = 1.0
 

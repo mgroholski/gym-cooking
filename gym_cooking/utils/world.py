@@ -123,49 +123,6 @@ class World:
 
         # plt.show()
 
-    def get_dist_bound_helper(self, loc, _type):
-        if _type == "lower":
-            dist = self.perimeter + 1
-            bound_locs = self.shared_space_locs
-            for a, b in product([loc], bound_locs):
-                # Other agent cannot exist at shared location so we add one.
-                dist = min(dist, manhattan_dist(a, b) + 1)
-        elif _type == "upper":
-            dist = 0
-            shared_counters = self.shared_space_locs
-            bound_locs = [
-                (0, 1),
-                (1, 0),
-                (0, self.height - 1),
-                (1, self.height),
-                (self.width - 1, 0),
-                (self.width, 1),
-                (self.width - 1, self.height),
-                (self.width, self.height - 1),
-            ]
-
-            max_dist = 0
-            max_shared_counter = (-1, -1)
-
-            for bound_loc, shared_counter in product(bound_locs, shared_counters):
-                d = manhattan_dist(bound_loc, shared_counter)
-                if d > max_dist:
-                    max_dist = d
-                    max_shared_counter = shared_counter
-
-            dist = manhattan_dist(max_shared_counter, loc) - 2 + max_dist * 2
-        else:
-            raise Exception(f"Invalid _type: {_type}")
-
-        return dist
-
-    def get_direct_dist_between(self, A_loc, B_locs):
-        dist = self.perimeter + 1
-        for a, b in product([A_loc], B_locs):
-            dist = min(dist, manhattan_dist(a, b))
-
-        return dist
-
     def clear_object(self, position):
         """Clears object @ position in self.rep and replaces it with an empty space"""
         x, y = position
@@ -309,7 +266,6 @@ class World:
             )
 
     def get_all_non_delivered_object_locs(self, obj):
-
         return list(
             set(
                 self.get_object_locs(obj=obj, is_held=True)
@@ -379,3 +335,46 @@ class World:
         """Correct locaiton to be in bounds of world object."""
         x, y = location
         return min(max(x, 0), self.width - 1), min(max(y, 0), self.height - 1)
+
+    def get_loc_bound(self, loc, _type):
+        if _type == "lower":
+            min_loc = None
+            min_loc_dist = float("inf")
+
+            bound_locs = self.shared_space_locs
+            for a, b in product([loc], bound_locs):
+                # Other agent cannot exist at shared location so we add one.
+                dist = manhattan_dist(a, b) + 1.0
+
+                if dist < min_loc_dist:
+                    min_loc = b
+                    min_loc_dist = dist
+
+            return min_loc
+
+        elif _type == "upper":
+            dist = 0
+
+            bound_locs = [
+                (0, 1),
+                (1, 0),
+                (0, self.height - 1),
+                (1, self.height),
+                (self.width - 1, 0),
+                (self.width, 1),
+                (self.width - 1, self.height),
+                (self.width, self.height - 1),
+            ]
+
+            max_dist = 0
+            max_loc = (-1, -1)
+
+            for a, b in product([loc], bound_locs):
+                d = manhattan_dist(a, b)
+                if d > max_dist:
+                    max_dist = d
+                    max_loc = b
+
+            return max_loc
+        else:
+            raise Exception(f"Invalid _type: {_type}")

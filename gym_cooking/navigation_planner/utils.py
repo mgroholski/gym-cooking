@@ -26,6 +26,8 @@ StringToObject = {
     "Potato": Potato,
 }
 
+ACTION_OBJECT_NAME_SET = set(["CookingPan", "Cutboard", "Delivery"])
+
 
 class MinPriorityQueue(PriorityQueue):
     """Used for min priority queue in BRTDP algorithm."""
@@ -289,6 +291,7 @@ def get_subtask_obj(subtask):
         )
         start_obj = get_obj(obj_string=subtask.args[0], type_="is_object", state=state)
         goal_obj = copy.copy(start_obj)
+        goal_obj.is_delivered = True
 
     elif isinstance(subtask, recipe.Get):
         start_obj = get_obj(

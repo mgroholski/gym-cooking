@@ -1,5 +1,6 @@
 import copy
-from collections import OrderedDict
+import itertools
+from collections import Counter, OrderedDict
 from enum import Enum
 
 import navigation_planner.utils as nav_utils
@@ -9,6 +10,7 @@ from delegation_planner.utils import NEG_INF_LOG_VAL
 from recipe_planner.recipe import Recipe
 from recipe_planner.stripsworld import STRIPSWorld
 from utils.core import Object, Plate
+from utils.interact import interact
 from utils.world import World
 
 UNCERTAIN_INIT_PROB = 0.0
@@ -120,6 +122,9 @@ class BeliefState:
 
         # Converts all probs to log probs
         for k, v in self.beliefs.items():
+            if k in self.sum_cnt_key_set:
+                continue
+
             if v != 0:
                 self.beliefs[k] = np.log(v)
             else:
@@ -128,7 +133,22 @@ class BeliefState:
     def get_repr(self):
         return tuple(
             [o.get_repr() for o in self.taken_list]
-            + sorted([(k, v) for k, v in self.beliefs.items()])
+            + sorted(
+                [
+                    (k, v)
+                    for k, v in self.beliefs.items()
+                    if k not in self.sum_cnt_key_set
+                ],
+                key=lambda a: a[0],
+            )
+            + sorted(
+                [
+                    (k, tuple(v))
+                    for k, v in self.beliefs.items()
+                    if k in self.sum_cnt_key_set
+                ],
+                key=lambda a: a[0],
+            )
         )
 
     def _order_recipe_subtasks(self, subtask_set):
@@ -189,7 +209,7 @@ class BeliefState:
         self.cnt_key_set.add(cnt_str)
 
         sum_cnt_str = get_sum_cnt_str(start_obj)
-        self.beliefs[sum_cnt_str] = 0.0
+        self.beliefs[sum_cnt_str] = []
         self.sum_cnt_key_set.add(sum_cnt_str)
 
         if is_initial_status_ing(start_obj):
@@ -206,15 +226,18 @@ class BeliefState:
             self.taken_name_set.add(obj.full_name)
             self.taken_list.append(obj)
 
-    def update(self, obs, obs_tm1, a_tm1, ta_probs):
+    def update(self, obs, obs_tm1, a_tm1, ta_probs, verbose=True):
         self.b_tm1 = copy.copy(self)
         evidence_type, evidence_obj = self.get_evidence(obs, obs_tm1, a_tm1)
 
-        print(f"[{self.cur_agent} Belief Update] Evidence of type {evidence_type}.")
-
-        if evidence_type != EvidenceType.NONE:
+        if verbose:
             print(
-                f"[{self.cur_agent} Belief Update] Evidence object is {evidence_obj.full_name}"
+                f"[Agent-{self.cur_agent} Belief Update] Evidence of type {evidence_type}."
+            )
+
+        if evidence_type != EvidenceType.NONE and verbose:
+            print(
+                f"[Agent-{self.cur_agent} Belief Update] Evidence object is {evidence_obj.full_name}"
             )
 
         if evidence_type == EvidenceType.PICK_UP:
@@ -259,20 +282,19 @@ class BeliefState:
                     self.beliefs[action_obj_name] = np.log(1.0)
 
                 evidence_obj_name = evidence_obj.full_name
-                self.beliefs[evidence_obj_name] = self.beliefs[
-                    get_sum_cnt_str(evidence_obj)
-                ]
+                self.beliefs[evidence_obj_name] = self._get_sum_cnt_prob(evidence_obj)
                 exclude_set.add(evidence_obj_name)
 
                 sum_cnt_str = get_sum_cnt_str(evidence_obj)
-                self.beliefs[sum_cnt_str] = NEG_INF_LOG_VAL
+                self.beliefs[sum_cnt_str] = []
                 exclude_set.add(sum_cnt_str)
 
             for k, _ in self.beliefs.items():
                 if k in exclude_set:
                     continue
 
-                print(f"[{self.cur_agent} Belief Update] Updating {k}...")
+                if verbose:
+                    print(f"[Agent-{self.cur_agent} Belief Update] Updating {k}...")
 
                 if k in self.ing_key_set or k in self.initial_ing_key_set:
                     if k in self.initial_ing_key_set:
@@ -301,6 +323,7 @@ class BeliefState:
                         not_created_and_existed_and_goal_not_created_log_prob,
                         created_log_prob,
                     )
+
                 elif k in self.cnt_key_set:
                     if k[2:-1] in self.initial_ing_key_set:
                         self.beliefs[k] = self._get_log_prob_by_key(
@@ -313,7 +336,7 @@ class BeliefState:
                     timestep_prob = self._get_log_prob_by_key(
                         k[6:-2]
                     ) + self._get_log_prob_by_key(k[4:-1])
-                    self.beliefs[k] = np.logaddexp(timestep_prob, self.beliefs[k])
+                    self.beliefs[k].append(timestep_prob)
 
     def get_shortest_action_path_to(self, evidence_obj, recipes):
         taken_world = World(None)
@@ -371,27 +394,31 @@ class BeliefState:
         return p
 
     def get_evidence(self, obs_t, obs_tm1, a_tm1):
-        for sim_agent in obs_tm1.sim_agents:
+        sim_obs_tm1 = copy.copy(obs_tm1)
+        for idx, sim_agent in enumerate(sim_obs_tm1.sim_agents):
             if sim_agent.name not in a_tm1:
                 raise Exception(f"Visible agent {sim_agent.name} without an action.")
+            else:
+                sim_obs_tm1.sim_agents[idx].action = a_tm1[sim_agent.name]
 
-        for sim_agent in obs_tm1.sim_agents:
-            if sim_agent in a_tm1:
-                sim_agent.action = a_tm1[sim_agent]
-        obs_tm1.execute_navigation()
-        expected_obs_t = obs_tm1
+        interact(agent=sim_obs_tm1.sim_agents[0], world=sim_obs_tm1.world)
+        expected_obs_t = sim_obs_tm1
 
         expected_objs_list = [
             o for o_type in expected_obs_t.world.get_dynamic_objects() for o in o_type
         ]
 
+        expected_objs_cnt = Counter(obj.full_name for obj in expected_objs_list)
+
         real_objs_list = [
             o for o_type in obs_t.world.get_dynamic_objects() for o in o_type
         ]
 
+        real_objs_cnt = Counter(obj.full_name for obj in real_objs_list)
+
         # Set Down Evidence
         for obj in real_objs_list:
-            if obj not in expected_objs_list:
+            if obj.full_name not in expected_objs_cnt:
                 if obj.is_delivered:
                     # We remove is_delivered attribute so that we don't make any inferences
                     # about a delivery station in S^j when it was delivered to a visible
@@ -400,11 +427,19 @@ class BeliefState:
                     obj.is_delivered = False
 
                 return (EvidenceType.SET_DOWN, obj)
+            else:
+                expected_objs_cnt[obj.full_name] -= 1
+                if not expected_objs_cnt[obj.full_name]:
+                    del expected_objs_cnt[obj.full_name]
 
         # Pick Up Evidence
         for obj in expected_objs_list:
-            if obj not in real_objs_list:
+            if obj.full_name not in real_objs_cnt:
                 return (EvidenceType.PICK_UP, obj)
+            else:
+                real_objs_cnt[obj.full_name] -= 1
+                if not real_objs_cnt[obj.full_name]:
+                    del real_objs_cnt[obj.full_name]
 
         # Delivery Evidence
         for i in range(min(len(expected_obs_t.task_queue), len(obs_t.task_queue))):
@@ -462,7 +497,7 @@ class BeliefState:
     def get_all_ing_existence_beliefs(self):
         existence_beliefs = {}
         for k in self.beliefs.keys():
-            if k in nav_utils.StringToObject or k == "Plate":
+            if "(" not in k and k not in nav_utils.ACTION_OBJECT_NAME_SET:
                 existence_beliefs[k] = self.get_prob_by_key(k)
 
         return existence_beliefs
@@ -470,6 +505,34 @@ class BeliefState:
     def __str__(self):
         s = ""
         for k, v in self.beliefs.items():
-            s += f"\t{k}: {np.exp(v)}\n"
+            if k not in self.sum_cnt_key_set:
+                s += f"\t{k}: {np.exp(v)}\n"
+            else:
+                s += f"\t{k}: {np.exp(self._get_union_prob(v))}\n"
 
         return s
+
+    def _get_sum_cnt_prob(self, evidence_obj):
+        prob_list = self.beliefs[get_sum_cnt_str(evidence_obj)]
+        return self._get_union_prob(prob_list)
+
+    def _get_union_prob(self, prob_list):
+        if not len(prob_list):
+            return NEG_INF_LOG_VAL
+        elif len(prob_list) == 1:
+            return prob_list[0]
+
+        odd_prob = NEG_INF_LOG_VAL
+        even_prob = NEG_INF_LOG_VAL
+        for i in range(1, len(prob_list) + 1):
+            term = NEG_INF_LOG_VAL
+            for perm in itertools.combinations(prob_list, i):
+                term = np.logaddexp(term, sum(perm))
+            if not i % 2:
+                even_prob = np.logaddexp(term, even_prob)
+            else:
+                odd_prob = np.logaddexp(term, odd_prob)
+
+        prob = np.log(np.exp(odd_prob) - np.exp(even_prob))
+
+        return prob

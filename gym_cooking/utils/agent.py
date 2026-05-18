@@ -108,21 +108,10 @@ class RealAgent:
         print(f"[{self.name}.select_action] @ TIMESTEP {obs.t}")
         print("===============================")
         print(f"Pre-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}")
-        print(f"Pre-Update Beliefs:\n{str(self.belief_state)}")
         print(
             "Incomplete Subtasks:\n",
             "\n".join([f"\t{str(v)}" for v in self.subtask_to_wrapper_dict.values()]),
         )
-
-        if obs.t > 0:
-            self.belief_state.update(
-                obs=copy.copy(obs),
-                obs_tm1=copy.copy(obs.obs_tm1),
-                a_tm1=obs.agent_actions,
-                ta_probs=copy.copy(self.delegator.probs),
-            )
-
-            print(f"Post-Update Beliefs:\n{str(self.belief_state)}")
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs, belief=self.belief_state)
@@ -135,6 +124,7 @@ class RealAgent:
         print(
             f"Post-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}"
         )
+
         self.plan(copy.copy(obs))
 
         comm = None if not self.arglist.comm else self.generate_communication(obs)
@@ -146,7 +136,8 @@ class RealAgent:
         threshold_entropy = (
             self.arglist.epsilon * self.delegator.probs.get_max_entropy()
         )
-        if entropy > threshold_entropy:
+
+        if entropy > threshold_entropy and not np.isneginf(threshold_entropy):
             print(
                 f"[{self.name}-generate-comm] Entropy of {entropy} exceeds threshold entropy of {threshold_entropy}."
             )
@@ -202,6 +193,21 @@ class RealAgent:
         self.subtask_agent_names = []
         self.subtask_complete = False
 
+    def update_beliefs(self, obs):
+        print("===============================")
+        print(f"[{self.name}.update_beliefs] @ TIMESTEP {obs.t}")
+        print("===============================")
+        print(f"Pre-Update Beliefs:\n{str(self.belief_state)}")
+
+        self.belief_state.update(
+            obs=copy.copy(obs),
+            obs_tm1=copy.copy(obs.obs_tm1),
+            a_tm1=obs.agent_actions,
+            ta_probs=copy.copy(self.delegator.probs),
+        )
+
+        print(f"Post-Update Beliefs:\n{str(self.belief_state)}")
+
     def refresh_subtasks(self, world):
         """Refresh subtasks---relevant for Bayesian Delegation."""
         # Check whether any incomplete subtask is complete.
@@ -237,18 +243,17 @@ class RealAgent:
                 if self.check_incomplete_subtask(
                     world, belief, incomplete_subtask, cnt=1
                 ):
-                    self.remove_subtask(incomplete_subtask)
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
+                    self.remove_subtask(incomplete_subtask)
                     break
             else:
                 if self.check_incomplete_subtask(world, belief, incomplete_subtask):
-                    self.remove_subtask(incomplete_subtask)
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
+                    self.remove_subtask(incomplete_subtask)
                     break
 
-        if self.subtask_removed or len(self.world.task_queue) != len(world.task_queue):
-            self.subtask_to_wrapper_dict = self.get_subtasks(world, belief)
-            self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
+        self.subtask_to_wrapper_dict = self.get_subtasks(world, belief)
+        self.incomplete_subtasks = [x for x in self.subtask_to_wrapper_dict.keys()]
 
         self.world = copy.copy(world)
 

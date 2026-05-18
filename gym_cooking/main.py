@@ -210,6 +210,8 @@ def main_loop(arglist):
 
         # Agents
         for idx, agent in enumerate(real_agents):
+            agent_obs = obs.get_agent_obs(idx)
+            agent.update_beliefs(obs=agent_obs)
             agent.refresh_subtasks(world=obs.get_agent_obs(idx).world)
 
         # Saving info

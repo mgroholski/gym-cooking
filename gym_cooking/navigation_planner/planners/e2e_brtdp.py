@@ -11,6 +11,7 @@ from recipe_planner.utils import Deliver
 # Navigation planning
 from utils.belief import get_cnt_str
 from utils.core import *
+from utils.interact import interact
 
 # Other core modules
 from utils.world import World
@@ -91,12 +92,12 @@ class E2E_BRTDP:
         base_state.sim_agents[0].action = action
         a_dict = {base_state.sim_agents[0].name: action}
 
-        base_state.execute_navigation()
+        interact(agent=base_state.sim_agents[0], world=base_state.world)
 
         s_j_area = ((base_state.world.height - 2) * (base_state.world.width - 2)) / 2
         s_j_area_prob = 1.0 / s_j_area
 
-        evidence_prob = 0.0
+        no_evidence_prob = 1.0
 
         transition_probs_and_states = []  # (prob, state, belief)
 
@@ -113,10 +114,12 @@ class E2E_BRTDP:
                 new_state_gs.holding = None
 
                 new_belief = copy.copy(belief)
-                new_belief.update(new_state, state, a_dict, self.ta_probs)
+                new_belief.update(
+                    new_state, state, a_dict, self.ta_probs, verbose=False
+                )
 
                 p = s_j_area_prob
-                evidence_prob += p
+                no_evidence_prob *= 1.0 - p
                 transition_probs_and_states.append((p, new_state, new_belief))
             else:
                 open_shared_locs.append(loc)
@@ -136,14 +139,15 @@ class E2E_BRTDP:
                     new_state_gs.holding = new_state_obj
                     new_state.world.insert(new_state_obj)
 
-                    new_belief = None
                     if updated_belief is None:
                         updated_belief = copy.copy(belief)
-                        updated_belief.update(new_state, state, a_dict, self.ta_probs)
+                        updated_belief.update(
+                            new_state, state, a_dict, self.ta_probs, verbose=False
+                        )
                     new_belief = copy.copy(updated_belief)
 
                     p = s_j_area_prob * v
-                    evidence_prob += p
+                    no_evidence_prob *= 1.0 - p
                     transition_probs_and_states.append((p, new_state, new_belief))
 
         # For each task, we simulate agent j delivering the final dish.
@@ -158,10 +162,12 @@ class E2E_BRTDP:
                     delivery_belief = belief["Delivery"]
 
                     new_belief = copy.copy(belief)
-                    new_belief.update(new_state, state, a_dict, self.ta_probs)
+                    new_belief.update(
+                        new_state, state, a_dict, self.ta_probs, verbose=False
+                    )
 
                     p = s_j_area_prob * goal_obj_belief * delivery_belief
-                    evidence_prob += p
+                    no_evidence_prob *= 1.0 - p
                     transition_probs_and_states.append(
                         (
                             p,
@@ -170,12 +176,14 @@ class E2E_BRTDP:
                         )
                     )
 
-        # No evidence transition
-        no_evidence_prob = 1 - evidence_prob
         assert no_evidence_prob >= 0.0
         base_belief = copy.copy(belief)
-        base_belief.update(base_state, state, a_dict, self.ta_probs)
+        base_belief.update(base_state, state, a_dict, self.ta_probs, verbose=False)
         transition_probs_and_states.append((no_evidence_prob, base_state, base_belief))
+
+        for _, s_, b_ in transition_probs_and_states:
+            self.repr_init(s_, b_)
+            self.value_init(s_, b_)
 
         return transition_probs_and_states
 
@@ -253,6 +261,7 @@ class E2E_BRTDP:
             # Track this new state in repr dict and value function
             # if it's new.
             self.value_init(env_state=x_state, belief_state=x_belief)
+            self.repr_init(state=x_state, belief=x_belief)
 
         print(
             "RUN SAMPLE EXPLORED {} STATES, took {}".format(
@@ -332,7 +341,8 @@ class E2E_BRTDP:
                 (
                     i
                     for i, t in enumerate(env.task_queue)
-                    if t.goal == self.goal_obj.to_predicate() and not t.is_complete
+                    if t.recipe.goal == self.goal_obj.to_predicate()
+                    and not t.is_complete
                 ),
                 None,
             )
@@ -429,9 +439,10 @@ class E2E_BRTDP:
         lower = lower * (self.time_cost + self.action_cost)
         upper = upper * (self.time_cost + self.action_cost)
 
-        # By BRTDP assumption, this should never be negative.
-        if not lower > 0:
+        if np.isnan(lower):
             breakpoint()
+
+        # By BRTDP assumption, this should never be negative.
         assert lower > 0, "lower: {}, {}, {}".format(
             lower, env_state.display(), env_state.print_agents()
         )
@@ -445,8 +456,8 @@ class E2E_BRTDP:
         cost = self.cost(state, belief, action)
 
         # Initialize state if it's new.
-        self.value_init(env_state=state, belief_state=belief)
         state_repr, belief_repr = self.repr_init(state=state, belief=belief)
+        self.value_init(env_state=state, belief_state=belief)
 
         # Get next state.
         next_state_list = self.T(
@@ -540,11 +551,30 @@ class E2E_BRTDP:
             return None
         else:
             actions = self.get_actions(state=cur_state)
-            qvals = [
-                self.Q(state=cur_state, belief=cur_belief, action=a, value_f=self.v_l)
+            qvals_lower = [
+                (
+                    self.Q(
+                        state=cur_state,
+                        belief=cur_belief,
+                        action=a,
+                        value_f=self.v_l,
+                    )
+                )
                 for a in actions
             ]
-            print([x for x in zip(actions, qvals)])
+            qvals_upper = [
+                (
+                    self.Q(
+                        state=cur_state,
+                        belief=cur_belief,
+                        action=a,
+                        value_f=self.v_u,
+                    )
+                )
+                for a in actions
+            ]
+            print("Upper Q Vals: ", [x for x in zip(actions, qvals_upper)])
+            print("Lower Q Vals: ", [x for x in zip(actions, qvals_lower)])
             print(
                 "upper is",
                 self.v_u[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)],
@@ -554,7 +584,7 @@ class E2E_BRTDP:
                 self.v_l[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)],
             )
 
-            action_index = argmin(np.array(qvals))
+            action_index = argmin(np.array(qvals_lower))
             a = actions[action_index]
 
             print("chose action:", a)

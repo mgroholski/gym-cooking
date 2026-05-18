@@ -28,11 +28,6 @@ def interact(agent, world):
         if isinstance(gs, Delivery):
             obj = agent.holding
             if obj.is_deliverable() and world.process_delivery(obj):
-                """
-                The goal state and subtask completion is measured by another object
-                being at the delivered location than the state before.
-
-                """
                 gs.acquire(obj)
                 agent.release()
 
