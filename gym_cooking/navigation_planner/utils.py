@@ -29,6 +29,14 @@ StringToObject = {
 ACTION_OBJECT_NAME_SET = set(["CookingPan", "Cutboard", "Delivery"])
 
 
+def get_other_agent_name(obs):
+    cur_agent_name = obs.sim_agents[0].name
+
+    for agent_name in obs.known_agents_names:
+        if agent_name != cur_agent_name:
+            return agent_name
+
+
 class MinPriorityQueue(PriorityQueue):
     """Used for min priority queue in BRTDP algorithm."""
 

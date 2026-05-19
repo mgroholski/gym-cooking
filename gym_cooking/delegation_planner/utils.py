@@ -82,7 +82,7 @@ class SubtaskAllocDistribution:
         if len(self.probs) == 0:
             return self.probs
 
-        log_probs = list(self.probs.values())
+        log_probs = [v for v in self.probs.values() if not np.isneginf(v)]
         log_total = sp.special.logsumexp(log_probs)
 
         for subtask_alloc in self.probs.keys():
@@ -93,10 +93,13 @@ class SubtaskAllocDistribution:
     def get_entropy(self):
         entropy = 0
         for log_p in self.probs.values():
-            p = np.exp(log_p)
-            entropy += p * log_p
+            if not np.isneginf(log_p):
+                p = np.exp(log_p)
+                entropy += p * log_p
 
         return -entropy
 
     def get_max_entropy(self):
-        return np.log(len(self.probs))
+        prob_cnt = len([v for v in self.probs.values() if not np.isneginf(v)])
+
+        return np.log(prob_cnt)

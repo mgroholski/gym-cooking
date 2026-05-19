@@ -8,6 +8,7 @@ import recipe_planner.utils as recipe_utils
 
 # core modules
 from utils.core import Object
+from utils.utils import BELIEF_THRESHOLD
 
 
 class STRIPSWorld:
@@ -28,7 +29,7 @@ class STRIPSWorld:
         if beliefs is not None:
             existence_beliefs = beliefs.get_all_ing_existence_beliefs()
             for k, v in existence_beliefs.items():
-                if v == 1.0:
+                if v >= BELIEF_THRESHOLD:
                     obj = beliefs.get_name_to_obj(k)
                     self.initial.add_predicate(obj.to_predicate())
 

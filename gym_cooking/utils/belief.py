@@ -21,6 +21,7 @@ class EvidenceType(Enum):
     PICK_UP = 1
     SET_DOWN = 2
     DELIVER = 3
+    COMM = 4
 
 
 def is_initial_status_ing(obj):
@@ -73,11 +74,15 @@ def get_dispenser_str_from_str(s):
 
 
 class BeliefState:
-    def __init__(self, obs, max_num_subtasks):
+    def __init__(self, obs, max_num_subtasks, comm_func, init_strips=True):
         self.beliefs = OrderedDict()
         self.taken_list = []
         self.taken_name_set = set()
         self.b_tm1 = None
+        self.comm_func = comm_func
+
+        self.obs = copy.copy(obs)
+        self.max_num_subtasks = max_num_subtasks
 
         self.initial_ing_key_set = set()
         self.ing_key_set = set()
@@ -90,35 +95,38 @@ class BeliefState:
 
         self.cur_agent = obs.sim_agents[0]
 
-        # Gets subtasks for all possible recipes.
-        sw = STRIPSWorld(obs.world, obs.recipes)
-        subtasks_per_recipe = sw.get_subtask_per_recipe(max_num_subtasks)
+        if init_strips:
+            # Gets subtasks for all possible recipes.
+            sw = STRIPSWorld(obs.world, obs.recipes)
+            subtasks_per_recipe = sw.get_subtask_per_recipe(max_num_subtasks)
 
-        for recipe_subtasks in subtasks_per_recipe:
-            for subtask in self._order_recipe_subtasks(recipe_subtasks):
-                start_objs, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
+            for recipe_subtasks in subtasks_per_recipe:
+                for subtask in self._order_recipe_subtasks(recipe_subtasks):
+                    start_objs, goal_obj = nav_utils.get_subtask_obj(subtask=subtask)
 
-                if not isinstance(start_objs, (list, tuple)):
-                    start_objs = [start_objs]
+                    if not isinstance(start_objs, (list, tuple)):
+                        start_objs = [start_objs]
 
-                for start_obj in start_objs:
-                    self._set_start_obj_beliefs(start_obj, obs)
-                    if start_obj.full_name not in self.G_x:
-                        self.G_x[start_obj.full_name] = set()
-                    self.G_x[start_obj.full_name].add(goal_obj.full_name)
-                    self.name_to_obj[start_obj.full_name] = start_obj
+                    for start_obj in start_objs:
+                        self._set_start_obj_beliefs(start_obj, obs)
+                        if start_obj.full_name not in self.G_x:
+                            self.G_x[start_obj.full_name] = set()
+                        self.G_x[start_obj.full_name].add(goal_obj.full_name)
+                        self.name_to_obj[start_obj.full_name] = start_obj
 
-                self.beliefs[goal_obj.full_name] = init_ingredient_belief(goal_obj, obs)
-                self.name_to_obj[goal_obj.full_name] = goal_obj
-
-                action_obj = nav_utils.get_subtask_action_obj(subtask)
-                if action_obj is not None:
-                    self.beliefs[action_obj.name] = (
-                        1.0
-                        if not len(obs.world.get_all_object_locs(action_obj))
-                        else UNCERTAIN_INIT_PROB
+                    self.beliefs[goal_obj.full_name] = init_ingredient_belief(
+                        goal_obj, obs
                     )
-                    self.name_to_obj[action_obj.name] = action_obj
+                    self.name_to_obj[goal_obj.full_name] = goal_obj
+
+                    action_obj = nav_utils.get_subtask_action_obj(subtask)
+                    if action_obj is not None:
+                        self.beliefs[action_obj.name] = (
+                            1.0
+                            if not len(obs.world.get_all_object_locs(action_obj))
+                            else UNCERTAIN_INIT_PROB
+                        )
+                        self.name_to_obj[action_obj.name] = action_obj
 
         # Converts all probs to log probs
         for k, v in self.beliefs.items():
@@ -226,9 +234,45 @@ class BeliefState:
             self.taken_name_set.add(obj.full_name)
             self.taken_list.append(obj)
 
+    def _get_action_objs_and_disp_from_evidence(self, evidence_obj, obs):
+        shortest_action_path = self.get_shortest_action_path_to(
+            evidence_obj, obs.recipes
+        )
+
+        initial_ingredients_disp_keys = set()
+        action_objs_names = set()
+
+        for action in shortest_action_path:
+            if isinstance(action, recipe_utils.Get):
+                obj_pred = action.post_add[0]
+                ingredient_name = obj_pred.args[0]
+                if ingredient_name == "Plate":
+                    ing = Plate()
+                else:
+                    ing = nav_utils.StringToObject[ingredient_name]()
+
+                ing_obj = Object(location=(-1, -1), contents=[ing])
+                initial_ingredients_disp_keys.add(get_dispenser_str(ing_obj))
+
+            action_obj = nav_utils.get_subtask_action_obj(action)
+            if action_obj is not None:
+                action_objs_names.add(action_obj.name)
+
+        return initial_ingredients_disp_keys, action_objs_names
+
     def update(self, obs, obs_tm1, a_tm1, ta_probs, verbose=True):
         self.b_tm1 = copy.copy(self)
+        self.obs = copy.copy(obs)
         evidence_type, evidence_obj = self.get_evidence(obs, obs_tm1, a_tm1)
+
+        other_agent_comm = ""
+        other_agent_name = nav_utils.get_other_agent_name(obs)
+        if other_agent_name in obs.comms:
+            other_agent_comm = obs.comms[other_agent_name]
+
+        comm_evidence_type, comm_evidence_objs = self.get_comm_evidence(
+            ta_probs, other_agent_name, other_agent_comm
+        )
 
         if verbose:
             print(
@@ -240,38 +284,43 @@ class BeliefState:
                 f"[Agent-{self.cur_agent} Belief Update] Evidence object is {evidence_obj.full_name}"
             )
 
+        exclude_set = set()
         if evidence_type == EvidenceType.PICK_UP:
             self._add_to_taken_list(evidence_obj)
             self.beliefs[evidence_obj.full_name] = np.log(1.0)
             return
-        else:
-            exclude_set = set()
-            if (
-                evidence_type == EvidenceType.SET_DOWN
-                or evidence_type == EvidenceType.DELIVER
-            ):
-                shortest_action_path = self.get_shortest_action_path_to(
-                    evidence_obj, obs.recipes
+        elif (
+            evidence_type == EvidenceType.SET_DOWN
+            or evidence_type == EvidenceType.DELIVER
+        ):
+            initial_ingredients_disp_keys, action_objs_names = (
+                self._get_action_objs_and_disp_from_evidence(evidence_obj, obs)
+            )
+
+            for ing_obj_dispenser_name in initial_ingredients_disp_keys:
+                exclude_set.add(ing_obj_dispenser_name)
+                self.beliefs[ing_obj_dispenser_name] = np.log(1.0)
+
+            for action_obj_name in action_objs_names:
+                exclude_set.add(action_obj_name)
+                self.beliefs[action_obj_name] = np.log(1.0)
+
+            evidence_obj_name = evidence_obj.full_name
+            self.beliefs[evidence_obj_name] = self._get_sum_cnt_prob(evidence_obj)
+            exclude_set.add(evidence_obj_name)
+
+            sum_cnt_str = get_sum_cnt_str(evidence_obj)
+            self.beliefs[sum_cnt_str] = []
+            exclude_set.add(sum_cnt_str)
+
+        if comm_evidence_type == EvidenceType.COMM:
+            for evidence_obj in comm_evidence_objs:
+                if evidence_obj is None:
+                    continue
+
+                initial_ingredients_disp_keys, action_objs_names = (
+                    self._get_action_objs_and_disp_from_evidence(evidence_obj, obs)
                 )
-
-                initial_ingredients_disp_keys = set()
-                action_objs_names = set()
-
-                for action in shortest_action_path:
-                    if isinstance(action, recipe_utils.Get):
-                        obj_pred = action.post_add[0]
-                        ingredient_name = obj_pred.args[0]
-                        if ingredient_name == "Plate":
-                            ing = Plate()
-                        else:
-                            ing = nav_utils.StringToObject[ingredient_name]()
-
-                        ing_obj = Object(location=(-1, -1), contents=[ing])
-                        initial_ingredients_disp_keys.add(get_dispenser_str(ing_obj))
-
-                    action_obj = nav_utils.get_subtask_action_obj(action)
-                    if action_obj is not None:
-                        action_objs_names.add(action_obj.name)
 
                 for ing_obj_dispenser_name in initial_ingredients_disp_keys:
                     exclude_set.add(ing_obj_dispenser_name)
@@ -282,61 +331,58 @@ class BeliefState:
                     self.beliefs[action_obj_name] = np.log(1.0)
 
                 evidence_obj_name = evidence_obj.full_name
-                self.beliefs[evidence_obj_name] = self._get_sum_cnt_prob(evidence_obj)
+                self.beliefs[evidence_obj_name] = np.log(1.0)
                 exclude_set.add(evidence_obj_name)
 
-                sum_cnt_str = get_sum_cnt_str(evidence_obj)
-                self.beliefs[sum_cnt_str] = []
-                exclude_set.add(sum_cnt_str)
+        for k, _ in self.beliefs.items():
+            if k in exclude_set:
+                continue
 
-            for k, _ in self.beliefs.items():
-                if k in exclude_set:
-                    continue
+            if verbose:
+                print(f"[Agent-{self.cur_agent} Belief Update] Updating {k}...")
 
-                if verbose:
-                    print(f"[Agent-{self.cur_agent} Belief Update] Updating {k}...")
+            if k in self.ing_key_set or k in self.initial_ing_key_set:
+                if k in self.initial_ing_key_set:
+                    created_log_prob = self._get_log_prob_by_key(
+                        get_dispenser_str_from_str(k)
+                    )
+                else:
+                    created_log_prob = self.get_created_prob(k, ta_probs)
 
-                if k in self.ing_key_set or k in self.initial_ing_key_set:
-                    if k in self.initial_ing_key_set:
-                        created_log_prob = self._get_log_prob_by_key(
-                            get_dispenser_str_from_str(k)
-                        )
-                    else:
-                        created_log_prob = self.get_created_prob(k, ta_probs)
-
-                    exist_before_log_prob = self._get_log_prob_by_key(k)
-                    goal_not_created_log_prob = 0.0
-                    for goal_obj_str in self.G_x[k]:
-                        goal_not_created_log_prob += np.log(
-                            1.0 - self.get_prob_by_key(goal_obj_str)
-                        )
-
-                    not_created_log_prob = np.log(1.0 - np.exp(created_log_prob))
-
-                    not_created_and_existed_and_goal_not_created_log_prob = (
-                        not_created_log_prob
-                        + exist_before_log_prob
-                        + goal_not_created_log_prob
+                exist_before_log_prob = self._get_log_prob_by_key(k)
+                goal_not_created_log_prob = 0.0
+                for goal_obj_str in self.G_x[k]:
+                    goal_not_created_log_prob += np.log(
+                        1.0 - self.get_prob_by_key(goal_obj_str)
                     )
 
-                    self.beliefs[k] = np.logaddexp(
-                        not_created_and_existed_and_goal_not_created_log_prob,
-                        created_log_prob,
-                    )
+                not_created_log_prob = np.log(1.0 - np.exp(created_log_prob))
 
-                elif k in self.cnt_key_set:
-                    if k[2:-1] in self.initial_ing_key_set:
-                        self.beliefs[k] = self._get_log_prob_by_key(
-                            get_dispenser_str_from_str(k[2:-1])
-                        )
-                    else:
-                        self.beliefs[k] = self.get_created_prob(k[2:-1], ta_probs)
-                elif k in self.sum_cnt_key_set:
-                    # Probability of count increasing and existing before
-                    timestep_prob = self._get_log_prob_by_key(
-                        k[6:-2]
-                    ) + self._get_log_prob_by_key(k[4:-1])
-                    self.beliefs[k].append(timestep_prob)
+                not_created_and_existed_and_goal_not_created_log_prob = (
+                    not_created_log_prob
+                    + exist_before_log_prob
+                    + goal_not_created_log_prob
+                )
+
+                self.beliefs[k] = np.logaddexp(
+                    not_created_and_existed_and_goal_not_created_log_prob,
+                    created_log_prob,
+                )
+
+            elif k in self.cnt_key_set:
+                if k[2:-1] in self.initial_ing_key_set:
+                    self.beliefs[k] = self._get_log_prob_by_key(
+                        get_dispenser_str_from_str(k[2:-1])
+                    )
+                else:
+                    self.beliefs[k] = self.get_created_prob(k[2:-1], ta_probs)
+            elif k in self.sum_cnt_key_set:
+                # Probability of count increasing and existing before
+                timestep_prob = self._get_log_prob_by_key(
+                    k[6:-2]
+                ) + self._get_log_prob_by_key(k[4:-1])
+                self.beliefs[k].append(timestep_prob)
+        return
 
     def get_shortest_action_path_to(self, evidence_obj, recipes):
         taken_world = World(None)
@@ -458,6 +504,42 @@ class BeliefState:
         # No Evidence
         return (EvidenceType.NONE, None)
 
+    def get_comm_evidence(self, ta_probs, other_agent_name, other_agent_comm):
+        if not len(other_agent_comm):
+            return EvidenceType.NONE, None
+
+        print(
+            f'[Agent-{self.cur_agent}.get_comm_evidence] Getting evidence for {other_agent_name}\'s comm "{other_agent_comm}"...'
+        )
+
+        ta_j = self.comm_func.get_most_probable_ta_from_comm(
+            ta_probs, other_agent_name, other_agent_comm
+        )
+
+        print(
+            f"[Agent-{self.cur_agent}.get_comm_evidence] {ta_j} is the most probable task allocation..."
+        )
+
+        if ta_j is None:
+            return EvidenceType.NONE, None
+
+        subtask_j = None
+
+        for t in ta_j:
+            if other_agent_name in t.subtask_agent_names:
+                subtask_j = t.subtask
+                break
+
+        start_obj, _ = nav_utils.get_subtask_obj(subtask_j)
+
+        if not isinstance(start_obj, (list, tuple)):
+            start_obj = [start_obj]
+
+        print(
+            f'[Agent-{self.cur_agent}.get_comm_evidence] Evidence objects are {start_obj} for {other_agent_name}\'s comm: "{other_agent_comm}"'
+        )
+        return EvidenceType.COMM, start_obj
+
     def get_belief_prob(self):
         # P(x_0, x_1, ..., x_|b| | ...) = P(x_0|x_1,...)P(x_1|...)...
         return np.exp(sum(self.beliefs.values()))
@@ -492,7 +574,18 @@ class BeliefState:
         return copy.copy(self.name_to_obj[name])
 
     def __copy__(self):
-        return copy.deepcopy(self)
+        new_belief = BeliefState(self.obs, self.max_num_subtasks, self.comm_func, False)
+        new_belief.beliefs = copy.deepcopy(self.beliefs)
+        new_belief.taken_list = copy.deepcopy(self.taken_list)
+        new_belief.taken_name_set = copy.deepcopy(self.taken_name_set)
+        new_belief.initial_ing_key_set = copy.deepcopy(self.initial_ing_key_set)
+        new_belief.ing_key_set = copy.deepcopy(self.ing_key_set)
+        new_belief.sum_cnt_key_set = copy.deepcopy(self.sum_cnt_key_set)
+        new_belief.cnt_key_set = copy.deepcopy(self.cnt_key_set)
+        new_belief.name_to_obj = copy.deepcopy(self.name_to_obj)
+        new_belief.G_x = copy.deepcopy(self.G_x)
+
+        return new_belief
 
     def get_all_ing_existence_beliefs(self):
         existence_beliefs = {}

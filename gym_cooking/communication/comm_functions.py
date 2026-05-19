@@ -1,7 +1,10 @@
 import json
+import random
 from pathlib import Path
 
+import numpy as np
 import tiktoken
+from delegation_planner.utils import NEG_INF_LOG_VAL
 from openai import OpenAI
 
 
@@ -38,7 +41,6 @@ class CommunicationFunctions:
             self.listen_prompt_template = self.LISTEN_PROMPT_PATH.read_text()
 
     def speak(self, name, obs, task_allocation):
-
         if self.speak_prompt_template is None:
             raise FileNotFoundError(
                 f"Prompt file not found at {self.SPEAK_PROMPT_PATH}"
@@ -151,7 +153,7 @@ class CommunicationFunctions:
 
         return comm_info
 
-    def get_logits(self, agent_name, comm, task_allocation):
+    def get_logits(self, agent_name, comm, task_allocation, cutoff_prob=None):
         if self.speak_prompt_template is None:
             raise FileNotFoundError(
                 f"Prompt file not found at {self.LOGITS_PROMPT_PATH}"
@@ -197,4 +199,28 @@ class CommunicationFunctions:
 
             prefix += gold_token
 
+            if cutoff_prob is not None and total_logprob < cutoff_prob:
+                return NEG_INF_LOG_VAL
+
         return total_logprob
+
+    def get_most_probable_ta_from_comm(self, ta_probs, agent_name, comm):
+        ta_j_list = []
+        max_prob = NEG_INF_LOG_VAL
+
+        for ta in ta_probs.enumerate_subtask_allocs():
+            p = self.get_logits(agent_name, comm, ta, max_prob) + np.log(
+                ta_probs.get(ta)
+            )
+
+            print(
+                f"[get_most_probable_ta_from_comm] {ta} has logit log-probability of {p}..."
+            )
+
+            if p > max_prob:
+                max_prob = p
+                ta_j_list = [ta]
+            elif p == max_prob:
+                ta_j_list.append(ta)
+
+        return random.choice(ta_j_list)

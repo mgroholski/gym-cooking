@@ -12,6 +12,7 @@ from recipe_planner.utils import Deliver
 from utils.belief import get_cnt_str
 from utils.core import *
 from utils.interact import interact
+from utils.utils import BELIEF_THRESHOLD
 
 # Other core modules
 from utils.world import World
@@ -361,8 +362,8 @@ class E2E_BRTDP:
             def is_goal_state(w, b):
                 return (
                     self.has_more_obj(len(w.get_all_object_locs(self.goal_obj)))
-                    or b[get_cnt_str(self.goal_obj)] == 1.0
-                )  # Observable objects or 1.0 belief
+                    or b[get_cnt_str(self.goal_obj)] >= BELIEF_THRESHOLD
+                )  # Observable objects or meets threshold
 
             self.is_goal_state = lambda e, b: is_goal_state(e.world, b)
             self.is_subtask_complete = is_goal_state
@@ -392,6 +393,7 @@ class E2E_BRTDP:
     def repr_init(self, state, belief):
         state_repr, belief_repr = state.get_repr(), belief.get_repr()
         if state_repr not in self.state_repr_to_env:
+            state.comms = {}
             self.state_repr_to_env[state_repr] = state
 
         if belief_repr not in self.belief_repr_to_belief:
@@ -438,9 +440,6 @@ class E2E_BRTDP:
 
         lower = lower * (self.time_cost + self.action_cost)
         upper = upper * (self.time_cost + self.action_cost)
-
-        if np.isnan(lower):
-            breakpoint()
 
         # By BRTDP assumption, this should never be negative.
         assert lower > 0, "lower: {}, {}, {}".format(

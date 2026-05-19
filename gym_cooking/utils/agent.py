@@ -47,8 +47,12 @@ class RealAgent:
         self.beta = arglist.beta
         self.none_action_prob = 0.5
 
+        self.comm_func = CommunicationFunctions(self.arglist)
+
         self.world = copy.copy(obs.world)
-        self.belief_state = BeliefState(obs, self.arglist.max_num_subtasks)
+        self.belief_state = BeliefState(
+            obs, self.arglist.max_num_subtasks, self.comm_func
+        )
 
         self.model_type = agent_settings(arglist, name)
         if self.model_type == "up":
@@ -65,8 +69,6 @@ class RealAgent:
             cap=arglist.cap,
             main_cap=arglist.main_cap,
         )
-
-        self.comm_func = CommunicationFunctions(self.arglist)
 
     def __str__(self):
         return color(self.name[-1], self.color)

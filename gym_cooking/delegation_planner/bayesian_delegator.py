@@ -64,6 +64,7 @@ class BayesianDelegator(Delegator):
         """
         if self.probs is None:
             return True
+
         # Get currently available subtasks.
         self.incomplete_subtasks = incomplete_subtasks
         self.subtask_to_wrapper_dict = subtask_to_wrapper_dict

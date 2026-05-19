@@ -1,3 +1,6 @@
+BELIEF_THRESHOLD = 0.99
+
+
 def agent_settings(arglist, agent_name):
     if agent_name[-1] == "1":
         return arglist.model1
