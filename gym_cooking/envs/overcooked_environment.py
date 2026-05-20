@@ -2,6 +2,7 @@
 import copy
 from collections import namedtuple
 from itertools import combinations, permutations, product
+from operator import and_
 
 import gym
 
@@ -205,7 +206,6 @@ class OvercookedEnvironment(gym.Env):
                         )
                         self.sim_agents.append(sim_agent)
                         self.known_agents_names.append(sim_agent.name)
-
                 elif phase == 4:
                     if agent_idx < len(self.sim_agents):
                         col_rng = line.split(" ")
@@ -220,21 +220,37 @@ class OvercookedEnvironment(gym.Env):
         self.world.height = y
         self.world.perimeter = 2 * (self.world.width + self.world.height)
         self.world.shared_space_locs = set()
+        self.world.shared_dispensers_dict = {}
+        self.world.shared_action_objects_dict = {}
 
         for v in self.world.objects.values():
             for obj in v:
-                if isinstance(obj, Counter):
-                    x, y = obj.location
-                    if (
-                        not (
-                            x == 0
-                            or x == (self.world.width - 1)
-                            or y == 0
-                            or y == (self.world.height - 1)
-                        )
-                        and not obj.is_dispenser
-                    ):
+                x, y = obj.location
+                if not (
+                    x == 0
+                    or x == (self.world.width - 1)
+                    or y == 0
+                    or y == (self.world.height - 1)
+                ):
+                    if isinstance(obj, Counter) and not obj.is_dispenser:
                         self.world.shared_space_locs.add((x, y))
+                    elif isinstance(obj, Counter) and obj.is_dispenser:
+                        holding_obj_name = obj.holding.full_name
+
+                        if holding_obj_name not in self.world.shared_dispensers_dict:
+                            self.world.shared_dispensers_dict[holding_obj_name] = []
+
+                        self.world.shared_dispensers_dict[holding_obj_name].append(
+                            obj.location
+                        )
+                    elif not isinstance(obj, Floor) and not isinstance(obj, Object):
+                        obj_name = obj.name
+                        if obj_name not in self.world.shared_action_objects_dict:
+                            self.world.shared_action_objects_dict[obj_name] = []
+
+                        self.world.shared_action_objects_dict[obj_name].append(
+                            obj.location
+                        )
 
     def reset(self):
         self.world = World(arglist=self.arglist)
@@ -579,7 +595,7 @@ class OvercookedEnvironment(gym.Env):
         penalty = holding_penalty
 
         D_max = self.world.perimeter + 1
-        D_b = 1.0 if _type == "lower" else D_max - 1
+        D_b = 1.0 if _type == "lower" else D_max
 
         if subtask is None:
             return D_max + penalty
@@ -635,6 +651,75 @@ class OvercookedEnvironment(gym.Env):
                     and_belief = so_belief * ao_belief
 
                     dist = and_belief * (D_b) + (1 - and_belief) * (D_max)
+
+                    if (
+                        start_obj.full_name in self.world.shared_dispensers_dict
+                        and action_obj.name in self.world.shared_action_objects_dict
+                    ):
+                        for a, b in product(
+                            self.world.shared_dispensers_dict[start_obj.full_name],
+                            self.world.shared_action_objects_dict[action_obj.name],
+                        ):
+                            dist = min(
+                                dist,
+                                min(
+                                    nav_utils.manhattan_dist(
+                                        self.world.get_loc_bound(a, _type),
+                                        a,
+                                    ),
+                                    nav_utils.manhattan_dist(
+                                        self.world.get_loc_bound(b, _type),
+                                        b,
+                                    ),
+                                )
+                                + nav_utils.manhattan_dist(a, b),
+                            )
+
+                    if start_obj.full_name in self.world.shared_dispensers_dict:
+                        for loc in self.world.shared_dispensers_dict[
+                            start_obj.full_name
+                        ]:
+                            dist = min(
+                                dist,
+                                nav_utils.manhattan_dist(
+                                    self.world.get_loc_bound(loc, _type),
+                                    loc,
+                                )
+                                + ao_belief * D_b
+                                + (1 - ao_belief) * D_max,
+                            )
+
+                    if action_obj.name in self.world.shared_action_objects_dict:
+                        for loc in self.world.shared_action_objects_dict[
+                            action_obj.name
+                        ]:
+                            dist = min(
+                                dist,
+                                nav_utils.manhattan_dist(
+                                    self.world.get_loc_bound(loc, _type),
+                                    loc,
+                                )
+                                + so_belief * D_b
+                                + (1 - so_belief) * D_max,
+                            )
+
+                    for shared_loc in self.world.shared_space_locs:
+                        gs = self.world.get_gridsquare_at(shared_loc)
+                        holding_obj = gs.holding
+                        if (
+                            holding_obj is not None
+                            and holding_obj.full_name == start_obj.full_name
+                        ):
+                            dist = min(
+                                dist,
+                                nav_utils.manhattan_dist(
+                                    self.world.get_loc_bound(shared_loc, _type),
+                                    shared_loc,
+                                )
+                                + ao_belief * D_b
+                                + (1 - ao_belief) * D_max,
+                            )
+
                 elif isinstance(subtask, recipe.Merge):
                     so1_belief, so2_belief = (
                         belief[start_obj[0].full_name],
@@ -643,6 +728,81 @@ class OvercookedEnvironment(gym.Env):
                     and_belief = so1_belief * so2_belief
 
                     dist = and_belief * (D_b) + (1 - and_belief) * (D_max)
+
+                    if (
+                        start_obj[0].full_name in self.world.shared_dispensers_dict
+                        and start_obj[1].full_name in self.world.shared_dispensers_dict
+                    ):
+                        for a, b in product(
+                            self.world.shared_dispensers_dict[start_obj[0].full_name],
+                            self.world.shared_dispensers_dict[start_obj[1].full_name],
+                        ):
+                            dist = min(
+                                dist,
+                                min(
+                                    nav_utils.manhattan_dist(
+                                        self.world.get_loc_bound(a, _type),
+                                        a,
+                                    ),
+                                    nav_utils.manhattan_dist(
+                                        self.world.get_loc_bound(b, _type), b
+                                    ),
+                                )
+                                + nav_utils.manhattan_dist(a, b),
+                            )
+
+                    if start_obj[0].full_name in self.world.shared_dispensers_dict:
+                        for loc in self.world.shared_dispensers_dict[
+                            start_obj[0].full_name
+                        ]:
+                            dist = min(
+                                dist,
+                                nav_utils.manhattan_dist(
+                                    self.world.get_loc_bound(loc, _type),
+                                    loc,
+                                )
+                                + so2_belief * D_b
+                                + (1 - so2_belief) * D_max,
+                            )
+
+                    if start_obj[1].full_name in self.world.shared_dispensers_dict:
+                        for loc in self.world.shared_dispensers_dict[
+                            start_obj[1].full_name
+                        ]:
+                            dist = min(
+                                dist,
+                                nav_utils.manhattan_dist(
+                                    self.world.get_loc_bound(loc, _type),
+                                    loc,
+                                )
+                                + so1_belief * D_b
+                                + (1 - so1_belief) * D_max,
+                            )
+
+                    for shared_loc in self.world.shared_space_locs:
+                        gs = self.world.get_gridsquare_at(shared_loc)
+                        holding_obj = gs.holding
+                        if holding_obj is not None:
+                            if holding_obj.full_name == start_obj[0].full_name:
+                                dist = min(
+                                    dist,
+                                    nav_utils.manhattan_dist(
+                                        self.world.get_loc_bound(shared_loc, _type),
+                                        shared_loc,
+                                    )
+                                    + so2_belief * D_b
+                                    + (1 - so2_belief) * D_max,
+                                )
+                            elif holding_obj.full_name == start_obj[1].full_name:
+                                dist = min(
+                                    dist,
+                                    nav_utils.manhattan_dist(
+                                        self.world.get_loc_bound(shared_loc, _type),
+                                        shared_loc,
+                                    )
+                                    + so1_belief * D_b
+                                    + (1 - so1_belief) * D_max,
+                                )
                 else:
                     raise NotImplementedError()
 
@@ -654,6 +814,9 @@ class OvercookedEnvironment(gym.Env):
                 agent.location,
                 self.world.get_loc_bound(agent.location, _type),
             ]
+
+            open_shared_locs = self.world.shared_space_locs
+
             if (
                 isinstance(subtask, recipe.Chop)
                 or isinstance(subtask, recipe.Cook)
@@ -671,9 +834,7 @@ class OvercookedEnvironment(gym.Env):
                         b = belief[action_obj.name]
 
                     for agent_location in agent_locs:
-                        for a_loc, b_loc in product(
-                            A_locs, self.world.shared_space_locs
-                        ):
+                        for a_loc, b_loc in product(A_locs, open_shared_locs):
                             dist = min(
                                 dist,
                                 (
@@ -689,9 +850,7 @@ class OvercookedEnvironment(gym.Env):
                         b = belief[start_obj.full_name]
 
                     for agent_location in agent_locs:
-                        for a_loc, b_loc in product(
-                            self.world.shared_space_locs, B_locs
-                        ):
+                        for a_loc, b_loc in product(open_shared_locs, B_locs):
                             dist = min(
                                 dist,
                                 (
@@ -707,9 +866,7 @@ class OvercookedEnvironment(gym.Env):
                         b = belief[action_obj.name]
 
                     for agent_location in agent_locs:
-                        for a_loc, b_loc in product(
-                            A_locs, self.world.shared_space_locs
-                        ):
+                        for a_loc, b_loc in product(A_locs, open_shared_locs):
                             dist = min(
                                 dist,
                                 (
@@ -725,9 +882,7 @@ class OvercookedEnvironment(gym.Env):
                         b = belief[start_obj.full_name]
 
                     for agent_location in agent_locs:
-                        for a_loc, b_loc in product(
-                            self.world.shared_space_locs, B_locs
-                        ):
+                        for a_loc, b_loc in product(open_shared_locs, B_locs):
                             dist = min(
                                 dist,
                                 (

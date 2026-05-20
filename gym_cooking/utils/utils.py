@@ -1,4 +1,4 @@
-BELIEF_THRESHOLD = 0.99
+BELIEF_THRESHOLD = 1.0
 
 
 def agent_settings(arglist, agent_name):

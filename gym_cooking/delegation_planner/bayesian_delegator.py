@@ -116,7 +116,7 @@ class BayesianDelegator(Delegator):
         return distance < env.world.perimeter
 
     def get_bound_for_subtask_alloc(
-        self, obs, belief, subtask, subtask_agent_names, ta_probs, _type
+        self, obs, belief, subtask, subtask_agent_names, ta_probs
     ):
         """Return the value lower bound for a subtask allocation
         (subtask x subtask_agent_names)."""
@@ -131,12 +131,27 @@ class BayesianDelegator(Delegator):
             subtask_agent_names=subtask_agent_names,
             ta_probs=ta_probs,
         )
-        value = self.planner.v_l[
-            (
-                (self.planner.cur_state.get_repr(), self.planner.cur_belief.get_repr()),
-                subtask,
-            )
-        ]
+
+        value = (
+            self.planner.v_u[
+                (
+                    (
+                        self.planner.cur_state.get_repr(),
+                        self.planner.cur_belief.get_repr(),
+                    ),
+                    (subtask, subtask_agent_names),
+                )
+            ]
+            + self.planner.v_l[
+                (
+                    (
+                        self.planner.cur_state.get_repr(),
+                        self.planner.cur_belief.get_repr(),
+                    ),
+                    (subtask, subtask_agent_names),
+                )
+            ]
+        ) / 2.0
 
         return value
 
@@ -195,27 +210,35 @@ class BayesianDelegator(Delegator):
 
     def get_spatial_priors(self, obs, belief, some_probs):
         """Setting prior probabilities w.r.t spatial metrics."""
+
         # Weight inversely by distance.
         for subtask_alloc in some_probs.enumerate_subtask_allocs():
             total_weight = 0
             for t in subtask_alloc:
                 if t.subtask is not None:
                     # Calculate prior with this agent's planner.
-                    total_weight += 1.0 / float(
-                        self.get_bound_for_subtask_alloc(
-                            obs=copy.copy(obs),
-                            belief=copy.copy(belief),
-                            subtask=t.subtask,
-                            subtask_agent_names=t.subtask_agent_names,
-                            ta_probs=copy.copy(some_probs),
-                            _type="lower",
+                    total_weight += 1.0 / (
+                        float(
+                            self.get_bound_for_subtask_alloc(
+                                obs=copy.copy(obs),
+                                belief=copy.copy(belief),
+                                subtask=t.subtask,
+                                subtask_agent_names=t.subtask_agent_names,
+                                ta_probs=copy.copy(some_probs),
+                            )
                         )
                     )
 
-            # Weight by number of nonzero subtasks.
+            log_p = np.log(
+                len(t) ** 2.0 * total_weight
+            )  # Weight by number of nonzero subtasks.
+
+            for agent_name, comm in obs.comms.items():
+                log_p += self.comm_funcs.get_logits(agent_name, comm, subtask_alloc)
+
             some_probs.update(
                 subtask_alloc=subtask_alloc,
-                factor=np.log(len(t) ** 2.0 * total_weight),
+                factor=log_p,
             )
         return some_probs
 

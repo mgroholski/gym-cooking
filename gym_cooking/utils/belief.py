@@ -2,6 +2,7 @@ import copy
 import itertools
 from collections import Counter, OrderedDict
 from enum import Enum
+from functools import lru_cache
 
 import navigation_planner.utils as nav_utils
 import numpy as np
@@ -151,7 +152,7 @@ class BeliefState:
             )
             + sorted(
                 [
-                    (k, tuple(v))
+                    (k, self._get_union_prob(v))
                     for k, v in self.beliefs.items()
                     if k in self.sum_cnt_key_set
                 ],
@@ -234,7 +235,9 @@ class BeliefState:
             self.taken_name_set.add(obj.full_name)
             self.taken_list.append(obj)
 
-    def _get_action_objs_and_disp_from_evidence(self, evidence_obj, obs):
+    def _update_beliefs_from_evidence(self, evidence_obj, obs):
+        exclude_set = set()
+
         shortest_action_path = self.get_shortest_action_path_to(
             evidence_obj, obs.recipes
         )
@@ -254,11 +257,33 @@ class BeliefState:
                 ing_obj = Object(location=(-1, -1), contents=[ing])
                 initial_ingredients_disp_keys.add(get_dispenser_str(ing_obj))
 
+            start_obj, _ = nav_utils.get_subtask_obj(action)
+            if not isinstance(start_obj, (list, tuple)):
+                start_obj = [start_obj]
+
+            for obj in start_obj:
+                self.beliefs[obj.full_name] = self._get_sum_cnt_prob(obj)
+                self.beliefs[get_sum_cnt_str(obj)] = []
+                exclude_set.add(obj.full_name)
+                exclude_set.add(get_sum_cnt_str(obj))
+
             action_obj = nav_utils.get_subtask_action_obj(action)
             if action_obj is not None:
                 action_objs_names.add(action_obj.name)
 
-        return initial_ingredients_disp_keys, action_objs_names
+        for ing_obj_dispenser_name in initial_ingredients_disp_keys:
+            exclude_set.add(ing_obj_dispenser_name)
+            self.beliefs[ing_obj_dispenser_name] = np.log(1.0)
+
+        for action_obj_name in action_objs_names:
+            exclude_set.add(action_obj_name)
+            self.beliefs[action_obj_name] = np.log(1.0)
+
+        evidence_obj_name = evidence_obj.full_name
+        self.beliefs[evidence_obj_name] = np.log(1.0)
+        exclude_set.add(evidence_obj_name)
+
+        return exclude_set
 
     def update(self, obs, obs_tm1, a_tm1, ta_probs, verbose=True):
         self.b_tm1 = copy.copy(self)
@@ -293,21 +318,8 @@ class BeliefState:
             evidence_type == EvidenceType.SET_DOWN
             or evidence_type == EvidenceType.DELIVER
         ):
-            initial_ingredients_disp_keys, action_objs_names = (
-                self._get_action_objs_and_disp_from_evidence(evidence_obj, obs)
-            )
-
-            for ing_obj_dispenser_name in initial_ingredients_disp_keys:
-                exclude_set.add(ing_obj_dispenser_name)
-                self.beliefs[ing_obj_dispenser_name] = np.log(1.0)
-
-            for action_obj_name in action_objs_names:
-                exclude_set.add(action_obj_name)
-                self.beliefs[action_obj_name] = np.log(1.0)
-
-            evidence_obj_name = evidence_obj.full_name
-            self.beliefs[evidence_obj_name] = self._get_sum_cnt_prob(evidence_obj)
-            exclude_set.add(evidence_obj_name)
+            exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
+            exclude_set = exclude | exclude_set
 
             sum_cnt_str = get_sum_cnt_str(evidence_obj)
             self.beliefs[sum_cnt_str] = []
@@ -318,21 +330,23 @@ class BeliefState:
                 if evidence_obj is None:
                     continue
 
-                initial_ingredients_disp_keys, action_objs_names = (
-                    self._get_action_objs_and_disp_from_evidence(evidence_obj, obs)
-                )
+                shared_list = []
+                for shared_loc in obs.world.shared_space_locs:
+                    gs = obs.world.get_gridsquare_at(shared_loc)
+                    if gs.holding is not None:
+                        gs_holding = gs.holding
+                        if gs_holding.full_name not in self.taken_name_set:
+                            shared_list.append(gs.holding)
+                            self.taken_name_set.add(gs_holding.full_name)
+                            self.taken_list.append(gs.holding)
 
-                for ing_obj_dispenser_name in initial_ingredients_disp_keys:
-                    exclude_set.add(ing_obj_dispenser_name)
-                    self.beliefs[ing_obj_dispenser_name] = np.log(1.0)
+                exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
 
-                for action_obj_name in action_objs_names:
-                    exclude_set.add(action_obj_name)
-                    self.beliefs[action_obj_name] = np.log(1.0)
+                for obj in shared_list:
+                    self.taken_name_set.remove(obj.full_name)
+                    self.taken_list.remove(obj)
 
-                evidence_obj_name = evidence_obj.full_name
-                self.beliefs[evidence_obj_name] = np.log(1.0)
-                exclude_set.add(evidence_obj_name)
+                exclude_set = exclude | exclude_set
 
         for k, _ in self.beliefs.items():
             if k in exclude_set:
@@ -509,7 +523,7 @@ class BeliefState:
             return EvidenceType.NONE, None
 
         print(
-            f'[Agent-{self.cur_agent}.get_comm_evidence] Getting evidence for {other_agent_name}\'s comm "{other_agent_comm}"...'
+            f'[Agent-{self.cur_agent}.get_comm_evidence] Getting evidence for {other_agent_name}\'s comm "{other_agent_comm}"'
         )
 
         ta_j = self.comm_func.get_most_probable_ta_from_comm(
@@ -517,7 +531,7 @@ class BeliefState:
         )
 
         print(
-            f"[Agent-{self.cur_agent}.get_comm_evidence] {ta_j} is the most probable task allocation..."
+            f"[Agent-{self.cur_agent}.get_comm_evidence] {ta_j} is the most probable task allocation."
         )
 
         if ta_j is None:
@@ -527,6 +541,9 @@ class BeliefState:
 
         for t in ta_j:
             if other_agent_name in t.subtask_agent_names:
+                if len(t.subtask_agent_names) != 1:
+                    return EvidenceType.NONE, None
+
                 subtask_j = t.subtask
                 break
 
@@ -536,8 +553,9 @@ class BeliefState:
             start_obj = [start_obj]
 
         print(
-            f'[Agent-{self.cur_agent}.get_comm_evidence] Evidence objects are {start_obj} for {other_agent_name}\'s comm: "{other_agent_comm}"'
+            f'[Agent-{self.cur_agent}.get_comm_evidence] Evidence objects are {[o.full_name if o is not None else None for o in start_obj]} for {other_agent_name}\'s comm: "{other_agent_comm}"'
         )
+
         return EvidenceType.COMM, start_obj
 
     def get_belief_prob(self):
@@ -607,25 +625,22 @@ class BeliefState:
 
     def _get_sum_cnt_prob(self, evidence_obj):
         prob_list = self.beliefs[get_sum_cnt_str(evidence_obj)]
-        return self._get_union_prob(prob_list)
+        return self._get_union_prob(tuple(prob_list))
 
-    def _get_union_prob(self, prob_list):
-        if not len(prob_list):
+    def _get_union_prob(self, prob_tuple):
+        if not prob_tuple:
             return NEG_INF_LOG_VAL
-        elif len(prob_list) == 1:
-            return prob_list[0]
+        if len(prob_tuple) == 1:
+            return min(prob_tuple[0], 0.0)
 
-        odd_prob = NEG_INF_LOG_VAL
-        even_prob = NEG_INF_LOG_VAL
-        for i in range(1, len(prob_list) + 1):
-            term = NEG_INF_LOG_VAL
-            for perm in itertools.combinations(prob_list, i):
-                term = np.logaddexp(term, sum(perm))
-            if not i % 2:
-                even_prob = np.logaddexp(term, even_prob)
-            else:
-                odd_prob = np.logaddexp(term, odd_prob)
+        # prob_tuple elements are log-probabilities <= 0
+        lp = np.asarray(prob_tuple, dtype=np.float64)
 
-        prob = np.log(np.exp(odd_prob) - np.exp(even_prob))
+        # log(1 - exp(lp)) for each event (stable for lp <= 0)
+        log_not = np.log1p(-np.exp(lp))
+        log_prod_not = np.sum(log_not)
 
-        return prob
+        # log(1 - exp(log_prod_not)) in a stable way
+        prob = np.log1p(-np.exp(log_prod_not))
+
+        return min(prob, 0.0)

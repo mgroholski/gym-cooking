@@ -6,7 +6,7 @@ from functools import lru_cache
 import navigation_planner.utils as nav_utils
 import numpy as np
 from navigation_planner.utils import MinPriorityQueue as mpq
-from recipe_planner.utils import Deliver
+from recipe_planner.utils import Deliver, Merge
 
 # Navigation planning
 from utils.belief import get_cnt_str
@@ -82,7 +82,7 @@ class E2E_BRTDP:
         return copy_
 
     @lru_cache(maxsize=10000)
-    def T(self, state_repr, belief_repr, action):
+    def T(self, state_repr, belief_repr, action, subtask, subtask_agent_names):
         """Return next states and their probabilities when taking action from state."""
         state, belief = (
             self.state_repr_to_env[state_repr],
@@ -95,66 +95,68 @@ class E2E_BRTDP:
 
         interact(agent=base_state.sim_agents[0], world=base_state.world)
 
+        if len(subtask_agent_names) == 1:
+            # For a single agent task, we don't care what the other agent is going
+            # thus we simulate a transition in the observable environment.
+            return [(1.0, base_state, belief)]
+
+        start_obj, goal_obj = nav_utils.get_subtask_obj(subtask)
+        action_obj = nav_utils.get_subtask_action_obj(subtask)
+        if not isinstance(start_obj, (list, tuple)):
+            start_obj = [start_obj]
+
         s_j_area = ((base_state.world.height - 2) * (base_state.world.width - 2)) / 2
         s_j_area_prob = 1.0 / s_j_area
 
-        no_evidence_prob = 1.0
+        base_state_prob = 1.0
 
         transition_probs_and_states = []  # (prob, state, belief)
 
-        # For each item in shared_space_locs, we have calculate the
-        # probability of that item being picked up.
+        # For each start object within the subtask and S^s, we expect
+        # the other agent to pick it up if the agent is in the correct location
+        # and the other needed item is within S^j, the action object or, in the
+        # case of Merge tasks, the other merge object.
         open_shared_locs = []
         for loc in base_state.world.shared_space_locs:
             gs = base_state.world.get_gridsquare_at(loc)
+            gs_holding = gs.holding
+
+            other_prob = 0.0
             if gs.holding is not None:
-                new_state = copy.copy(base_state)
-                new_state_gs = new_state.world.get_gridsquare_at(loc)
-                new_state_gs_holding = new_state_gs.holding
-                new_state.world.remove(new_state_gs_holding)
-                new_state_gs.holding = None
+                if isinstance(subtask, Merge):
+                    if gs_holding.full_name == start_obj[0].full_name:
+                        other_prob = belief[start_obj[1].full_name]
+                    elif gs_holding.full_name == start_obj[1].full_name:
+                        other_prob = belief[start_obj[1].full_name]
+                else:
+                    other_prob = belief[action_obj.name]
 
-                new_belief = copy.copy(belief)
-                new_belief.update(
-                    new_state, state, a_dict, self.ta_probs, verbose=False
-                )
+                if other_prob > 0.0:
+                    new_state = copy.copy(base_state)
+                    new_state_gs = new_state.world.get_gridsquare_at(loc)
+                    new_state_gs_holding = new_state_gs.holding
+                    new_state.world.remove(new_state_gs_holding)
+                    new_state_gs.holding = None
 
-                p = s_j_area_prob
-                no_evidence_prob *= 1.0 - p
-                transition_probs_and_states.append((p, new_state, new_belief))
+                    new_belief = copy.copy(belief)
+                    new_belief.update(
+                        new_state, state, a_dict, self.ta_probs, verbose=False
+                    )
+
+                    p = s_j_area_prob * other_prob
+                    base_state_prob *= 1.0 - p
+                    transition_probs_and_states.append((p, new_state, new_belief))
             else:
                 open_shared_locs.append(loc)
 
-        # For each item that can exist, we simulate agent j placing
-        # it into the shared counter space.
-        for k, v in belief.get_all_ing_existence_beliefs().items():
-            # We can place the item on any of the open locations
-            if v > 0.0:
-                updated_belief = None
-                for open_shared_loc in open_shared_locs:
-                    new_state = copy.copy(base_state)
-                    new_state_gs = new_state.world.get_gridsquare_at(open_shared_loc)
-
-                    new_state_obj = belief.get_name_to_obj(k)
-                    new_state_obj.location = open_shared_loc
-                    new_state_gs.holding = new_state_obj
-                    new_state.world.insert(new_state_obj)
-
-                    if updated_belief is None:
-                        updated_belief = copy.copy(belief)
-                        updated_belief.update(
-                            new_state, state, a_dict, self.ta_probs, verbose=False
-                        )
-                    new_belief = copy.copy(updated_belief)
-
-                    p = s_j_area_prob * v
-                    no_evidence_prob *= 1.0 - p
-                    transition_probs_and_states.append((p, new_state, new_belief))
-
-        # For each task, we simulate agent j delivering the final dish.
-        if belief["Delivery"] > 0.0:
+        if isinstance(subtask, Deliver) and not len(
+            base_state.world.objects["Delivery"]
+        ):
             for idx, task in enumerate(base_state.task_queue):
-                if not task.is_complete:
+                if (
+                    not task.is_complete
+                    and task.recipe.full_state_plate_name == goal_obj.full_name
+                ):
                     new_state = copy.copy(base_state)
                     new_state.task_queue[idx].is_complete = True
 
@@ -168,7 +170,7 @@ class E2E_BRTDP:
                     )
 
                     p = s_j_area_prob * goal_obj_belief * delivery_belief
-                    no_evidence_prob *= 1.0 - p
+                    base_state_prob *= 1.0 - p
                     transition_probs_and_states.append(
                         (
                             p,
@@ -176,11 +178,49 @@ class E2E_BRTDP:
                             new_belief,
                         )
                     )
+        else:
+            # For each object that's a start or
+            # goal object we simulate the agent setting down into the middle based
+            # on the probability of the object existing and the agent being in the correct position.
+            for obj in start_obj + [goal_obj]:
+                if obj is None:
+                    continue
 
-        assert no_evidence_prob >= 0.0
+                k = obj.full_name
+                v = belief[k]
+
+                if v > 0.0:
+                    updated_belief = None
+                    for open_shared_loc in open_shared_locs:
+                        new_state = copy.copy(base_state)
+                        new_state_gs = new_state.world.get_gridsquare_at(
+                            open_shared_loc
+                        )
+
+                        new_state_obj = belief.get_name_to_obj(k)
+                        new_state_obj.location = open_shared_loc
+                        new_state_gs.holding = new_state_obj
+                        new_state.world.insert(new_state_obj)
+
+                        if updated_belief is None:
+                            updated_belief = copy.copy(belief)
+                            updated_belief.update(
+                                new_state,
+                                state,
+                                a_dict,
+                                self.ta_probs,
+                                verbose=False,
+                            )
+                        new_belief = copy.copy(updated_belief)
+
+                        p = s_j_area_prob * v
+                        base_state_prob *= 1.0 - p
+                        transition_probs_and_states.append((p, new_state, new_belief))
+
+        assert base_state_prob >= 0.0
         base_belief = copy.copy(belief)
         base_belief.update(base_state, state, a_dict, self.ta_probs, verbose=False)
-        transition_probs_and_states.append((no_evidence_prob, base_state, base_belief))
+        transition_probs_and_states.append((base_state_prob, base_state, base_belief))
 
         for _, s_, b_ in transition_probs_and_states:
             self.repr_init(s_, b_)
@@ -211,8 +251,18 @@ class E2E_BRTDP:
         )
 
         diff = (
-            self.v_u[((start_repr, start_belief_repr), self.subtask)]
-            - self.v_l[((start_repr, start_belief_repr), self.subtask)]
+            self.v_u[
+                (
+                    (start_repr, start_belief_repr),
+                    (self.subtask, self.subtask_agent_names),
+                )
+            ]
+            - self.v_l[
+                (
+                    (start_repr, start_belief_repr),
+                    (self.subtask, self.subtask_agent_names),
+                )
+            ]
         )
         print("DIFF AT START: {}".format(diff))
 
@@ -235,7 +285,9 @@ class E2E_BRTDP:
                     for a in actions
                 ]
             )
-            self.v_u[((x_repr, x_belief_repr), self.subtask)] = new_upper
+            self.v_u[
+                ((x_repr, x_belief_repr), (self.subtask, self.subtask_agent_names))
+            ] = new_upper
 
             action_index = argmin(
                 [
@@ -248,13 +300,25 @@ class E2E_BRTDP:
             new_lower = self.Q(
                 state=x_state, belief=x_belief, action=a, value_f=self.v_l
             )
-            self.v_l[((x_repr, x_belief_repr), self.subtask)] = new_lower
+            self.v_l[
+                ((x_repr, x_belief_repr), (self.subtask, self.subtask_agent_names))
+            ] = new_lower
 
             b = self.get_expected_diff(x_state.get_repr(), x_belief.get_repr(), a)
             B = sum(b.values())
             diff = (
-                self.v_u[((start_repr, start_belief_repr), self.subtask)]
-                - self.v_l[((start_repr, start_belief_repr), self.subtask)]
+                self.v_u[
+                    (
+                        (start_repr, start_belief_repr),
+                        (self.subtask, self.subtask_agent_names),
+                    )
+                ]
+                - self.v_l[
+                    (
+                        (start_repr, start_belief_repr),
+                        (self.subtask, self.subtask_agent_names),
+                    )
+                ]
             ) / self.tau
             if B <= diff:
                 break
@@ -273,13 +337,17 @@ class E2E_BRTDP:
             x_state, x_belief = traj.pop()
             x_repr, x_belief_tuple = x_state.get_repr(), x_belief.get_repr()
             actions = self.get_actions(state=x_state)
-            self.v_u[((x_repr, x_belief_tuple), self.subtask)] = min(
+            self.v_u[
+                ((x_repr, x_belief_tuple), (self.subtask, self.subtask_agent_names))
+            ] = min(
                 [
                     self.Q(state=x_state, belief=x_belief, action=a, value_f=self.v_u)
                     for a in actions
                 ]
             )
-            self.v_l[((x_repr, x_belief_tuple), self.subtask)] = min(
+            self.v_l[
+                ((x_repr, x_belief_tuple), (self.subtask, self.subtask_agent_names))
+            ] = min(
                 [
                     self.Q(state=x_state, belief=x_belief, action=a, value_f=self.v_l)
                     for a in actions
@@ -294,15 +362,29 @@ class E2E_BRTDP:
             self.start_belief.get_repr(),
         )
 
-        upper = self.v_u[((start_repr, start_belief_repr), self.subtask)]
-        lower = self.v_l[((start_repr, start_belief_repr), self.subtask)]
+        upper = self.v_u[
+            ((start_repr, start_belief_repr), (self.subtask, self.subtask_agent_names))
+        ]
+        lower = self.v_l[
+            ((start_repr, start_belief_repr), (self.subtask, self.subtask_agent_names))
+        ]
         diff = upper - lower
 
         # Run until convergence or until you max out on iteration
         while (diff > self.alpha) and (main_counter < self.main_cap):
             print("\nstarting main loop #", main_counter)
-            new_upper = self.v_u[((start_repr, start_belief_repr), self.subtask)]
-            new_lower = self.v_l[((start_repr, start_belief_repr), self.subtask)]
+            new_upper = self.v_u[
+                (
+                    (start_repr, start_belief_repr),
+                    (self.subtask, self.subtask_agent_names),
+                )
+            ]
+            new_lower = self.v_l[
+                (
+                    (start_repr, start_belief_repr),
+                    (self.subtask, self.subtask_agent_names),
+                )
+            ]
             new_diff = new_upper - new_lower
             if new_diff > diff + 0.01:
                 self.start.update_display()
@@ -405,16 +487,23 @@ class E2E_BRTDP:
         """Initialize value for environment state."""
         # Skip if already initialized.
         es_repr, belief_repr = env_state.get_repr(), belief_state.get_repr()
-        if ((es_repr, belief_repr), self.subtask) in self.v_l and (
+        if (
             (es_repr, belief_repr),
-            self.subtask,
+            (self.subtask, self.subtask_agent_names),
+        ) in self.v_l and (
+            (es_repr, belief_repr),
+            (self.subtask, self.subtask_agent_names),
         ) in self.v_u:
             return
 
         # Goal state has value 0.
         if self.is_goal_state(env_state, belief_state):
-            self.v_l[((es_repr, belief_repr), self.subtask)] = 0.0
-            self.v_u[((es_repr, belief_repr), self.subtask)] = 0.0
+            self.v_l[
+                ((es_repr, belief_repr), (self.subtask, self.subtask_agent_names))
+            ] = 0.0
+            self.v_u[
+                ((es_repr, belief_repr), (self.subtask, self.subtask_agent_names))
+            ] = 0.0
             return
 
         # Determine lower bound on this environment state.
@@ -446,8 +535,12 @@ class E2E_BRTDP:
             lower, env_state.display(), env_state.print_agents()
         )
 
-        self.v_l[((es_repr, belief_repr), self.subtask)] = lower
-        self.v_u[((es_repr, belief_repr), self.subtask)] = upper
+        self.v_l[((es_repr, belief_repr), (self.subtask, self.subtask_agent_names))] = (
+            lower
+        )
+        self.v_u[((es_repr, belief_repr), (self.subtask, self.subtask_agent_names))] = (
+            upper
+        )
 
     def Q(self, state, belief, action, value_f):
         """Get Q value using value_f of (state, action)."""
@@ -460,7 +553,11 @@ class E2E_BRTDP:
 
         # Get next state.
         next_state_list = self.T(
-            state_repr=state_repr, belief_repr=belief_repr, action=action
+            state_repr=state_repr,
+            belief_repr=belief_repr,
+            action=action,
+            subtask=self.subtask,
+            subtask_agent_names=self.subtask_agent_names,
         )
 
         expected_value = 0.0
@@ -468,7 +565,12 @@ class E2E_BRTDP:
             # Initialize new state if it's new.
             ns_repr, nb_repr = self.repr_init(ns, nb)
             self.value_init(env_state=ns, belief_state=nb)
-            expected_value += p * value_f[((ns_repr, nb_repr), self.subtask)]
+            expected_value += (
+                p
+                * value_f[
+                    ((ns_repr, nb_repr), (self.subtask, self.subtask_agent_names))
+                ]
+            )
 
         return float(cost + expected_value)
 
@@ -485,7 +587,11 @@ class E2E_BRTDP:
     def get_expected_diff(self, start_state_repr, start_belief_repr, action):
         # Get next state.
         next_state_list = self.T(
-            state_repr=start_state_repr, belief_repr=start_belief_repr, action=action
+            state_repr=start_state_repr,
+            belief_repr=start_belief_repr,
+            action=action,
+            subtask=self.subtask,
+            subtask_agent_names=self.subtask_agent_names,
         )
 
         b = {}
@@ -497,8 +603,8 @@ class E2E_BRTDP:
             s_repr, b_repr = self.repr_init(s_, b_)
 
             b[s_repr] = p * (
-                self.v_u[((s_repr, b_repr), self.subtask)]
-                - self.v_l[((s_repr, b_repr), self.subtask)]
+                self.v_u[((s_repr, b_repr), (self.subtask, self.subtask_agent_names))]
+                - self.v_l[((s_repr, b_repr), (self.subtask, self.subtask_agent_names))]
             )
 
         return b
@@ -535,8 +641,18 @@ class E2E_BRTDP:
             ).values()
         )
         diff = (
-            self.v_u[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)]
-            - self.v_l[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)]
+            self.v_u[
+                (
+                    (cur_state.get_repr(), cur_belief.get_repr()),
+                    (self.subtask, self.subtask_agent_names),
+                )
+            ]
+            - self.v_l[
+                (
+                    (cur_state.get_repr(), cur_belief.get_repr()),
+                    (self.subtask, self.subtask_agent_names),
+                )
+            ]
         ) / self.tau
         self.cur_state = cur_state
         self.cur_belief = cur_belief
@@ -576,11 +692,21 @@ class E2E_BRTDP:
             print("Lower Q Vals: ", [x for x in zip(actions, qvals_lower)])
             print(
                 "upper is",
-                self.v_u[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)],
+                self.v_u[
+                    (
+                        (cur_state.get_repr(), cur_belief.get_repr()),
+                        (self.subtask, self.subtask_agent_names),
+                    )
+                ],
             )
             print(
                 "lower is",
-                self.v_l[((cur_state.get_repr(), cur_belief.get_repr()), self.subtask)],
+                self.v_l[
+                    (
+                        (cur_state.get_repr(), cur_belief.get_repr()),
+                        (self.subtask, self.subtask_agent_names),
+                    )
+                ],
             )
 
             action_index = argmin(np.array(qvals_lower))
@@ -591,7 +717,7 @@ class E2E_BRTDP:
             return a
 
     def reset_value_caches(self, subtask):
-        for state, action in list(self.v_l.keys()):
-            if action == subtask:
-                del self.v_l[(state, action)]
-                del self.v_u[(state, action)]
+        for state, (subtask_c, subtask_agent_names_c) in list(self.v_l.keys()):
+            if subtask == subtask_c:
+                del self.v_l[(state, (subtask_c, subtask_agent_names_c))]
+                del self.v_u[(state, (subtask_c, subtask_agent_names_c))]

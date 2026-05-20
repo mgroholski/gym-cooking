@@ -209,12 +209,14 @@ class CommunicationFunctions:
         max_prob = NEG_INF_LOG_VAL
 
         for ta in ta_probs.enumerate_subtask_allocs():
-            p = self.get_logits(agent_name, comm, ta, max_prob) + np.log(
-                ta_probs.get(ta)
-            )
+            # This term is P(ta | z) = P(z | ta)P(ta)
+            # We consider the distribution over ta's to be uniform
+            # so for comparison we only measure P(z | ta) coming from logits.
+
+            p = self.get_logits(agent_name, comm, ta, max_prob)
 
             print(
-                f"[get_most_probable_ta_from_comm] {ta} has logit log-probability of {p}..."
+                f"[get_most_probable_ta_from_comm] {ta} has logit log-probability of {p}."
             )
 
             if p > max_prob:
