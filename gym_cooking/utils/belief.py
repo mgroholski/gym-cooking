@@ -77,8 +77,8 @@ def get_dispenser_str_from_str(s):
 class BeliefState:
     def __init__(self, obs, max_num_subtasks, comm_func, init_strips=True):
         self.beliefs = OrderedDict()
-        self.taken_list = []
-        self.taken_name_set = set()
+        self.taken_name_to_obj = {}
+        self.taken_name_cnt = {}
         self.b_tm1 = None
         self.comm_func = comm_func
 
@@ -141,7 +141,10 @@ class BeliefState:
 
     def get_repr(self):
         return tuple(
-            [o.get_repr() for o in self.taken_list]
+            [
+                (self.taken_name_cnt[k].get_repr(), v)
+                for k, v in self.taken_name_cnt.items()
+            ]
             + sorted(
                 [
                     (k, v)
@@ -230,10 +233,22 @@ class BeliefState:
             self.beliefs[start_obj.full_name] = 0.0
             self.ing_key_set.add(start_obj.full_name)
 
-    def _add_to_taken_list(self, obj):
-        if obj.full_name not in self.taken_name_set:
-            self.taken_name_set.add(obj.full_name)
-            self.taken_list.append(obj)
+    def _add_to_taken(self, obj):
+        obj_full_name = obj.full_name
+        if obj_full_name not in self.taken_name_cnt:
+            self.taken_name_cnt[obj_full_name] = 0
+            self.taken_name_to_obj[obj_full_name]
+
+        self.taken_name_cnt[obj_full_name] += 1
+
+    def _remove_from_taken(self, obj):
+        obj_full_name = obj.full_name
+
+        if obj_full_name in self.taken_name_cnt:
+            self.taken_name_cnt[obj_full_name] -= 1
+            if self.taken_name_cnt[obj_full_name] == 0:
+                del self.taken_name_cnt[obj_full_name]
+                del self.taken_name_to_obj[obj_full_name]
 
     def _update_beliefs_from_evidence(self, evidence_obj, obs):
         exclude_set = set()
@@ -267,6 +282,10 @@ class BeliefState:
                 self.beliefs[obj_sum_str] = []
                 exclude_set.add(obj.full_name)
                 exclude_set.add(get_sum_cnt_str(obj))
+
+                # If the object was taken and used in this path
+                # we infer that the agent no longer has it on their side.
+                self._remove_from_taken(obj)
 
             action_obj = nav_utils.get_subtask_action_obj(action)
             if action_obj is not None:
@@ -308,7 +327,7 @@ class BeliefState:
 
         exclude_set = set()
         if evidence_type == EvidenceType.PICK_UP:
-            self._add_to_taken_list(evidence_obj)
+            self._add_to_taken(evidence_obj)
             self.beliefs[evidence_obj.full_name] = np.log(1.0)
             return
         elif (
@@ -336,17 +355,14 @@ class BeliefState:
                     gs = obs.world.get_gridsquare_at(shared_loc)
                     if gs.holding is not None:
                         gs_holding = gs.holding
-                        if gs_holding.full_name not in self.taken_name_set:
-                            shared_list.append(gs.holding)
-                            self.taken_name_set.add(gs_holding.full_name)
-                            self.taken_list.append(gs.holding)
+                        shared_list.append(gs.holding)
+                        self._add_to_taken(gs_holding)
 
                 exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
                 exclude_set = exclude | exclude_set
 
                 for obj in shared_list:
-                    self.taken_name_set.remove(obj.full_name)
-                    self.taken_list.remove(obj)
+                    self._remove_from_taken(obj)
 
                 evidence_obj_name = evidence_obj.full_name
                 self.beliefs[evidence_obj_name] = np.log(1.0)
@@ -405,8 +421,9 @@ class BeliefState:
     def get_shortest_action_path_to(self, evidence_obj, recipes):
         taken_world = World(None)
 
-        for obj in self.taken_list:
-            taken_world.insert(obj)
+        for k in self.taken_name_cnt.keys():
+            if self.taken_name_cnt[k] > 0:
+                taken_world.insert(self.taken_name_to_obj[k])
 
         taken_recipe = Recipe("taken-recipe")
         taken_recipe.goal = evidence_obj.to_predicate()
@@ -598,8 +615,8 @@ class BeliefState:
     def __copy__(self):
         new_belief = BeliefState(self.obs, self.max_num_subtasks, self.comm_func, False)
         new_belief.beliefs = copy.deepcopy(self.beliefs)
-        new_belief.taken_list = copy.deepcopy(self.taken_list)
-        new_belief.taken_name_set = copy.deepcopy(self.taken_name_set)
+        new_belief.taken_name_cnt = copy.deepcopy(self.taken_name_cnt)
+        new_belief.taken_name_to_obj = copy.deepcopy(self.taken_name_to_obj)
         new_belief.initial_ing_key_set = copy.deepcopy(self.initial_ing_key_set)
         new_belief.ing_key_set = copy.deepcopy(self.ing_key_set)
         new_belief.sum_cnt_key_set = copy.deepcopy(self.sum_cnt_key_set)
