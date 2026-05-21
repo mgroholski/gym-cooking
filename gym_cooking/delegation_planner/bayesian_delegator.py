@@ -110,6 +110,7 @@ class BayesianDelegator(Delegator):
             goal_obj=goal_obj,
             action_obj=action_obj,
             _type="lower",
+            use_holding_penalty=False,
         )
 
         # Subtask allocation is doable if there's a possibility that the required distance is less than the world perimeter.

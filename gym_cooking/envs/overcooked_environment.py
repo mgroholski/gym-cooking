@@ -27,7 +27,6 @@ from utils.interact import interact
 from utils.world import World
 
 CollisionRepr = namedtuple("CollisionRepr", "time agent_names agent_locations")
-HOLDING_PENALTY = 1.0
 
 
 class OvercookedEnvironment(gym.Env):
@@ -566,12 +565,13 @@ class OvercookedEnvironment(gym.Env):
         goal_obj,
         action_obj,
         _type,
+        use_holding_penalty=True,
     ):
         """Return the bound under this subtask between objects."""
 
         # Calculate extra holding penalty if the object is irrelevant.
         holding_penalty = 0.0
-        HOLDING_PENALTY = (self.world.perimeter + 1) * 1
+        HOLDING_PENALTY = (self.world.perimeter + 1) * 10
 
         for agent in self.sim_agents:
             if agent.name in subtask_agent_names:
@@ -592,7 +592,7 @@ class OvercookedEnvironment(gym.Env):
         agent = visible_agents[0]
 
         holding_penalty = min(holding_penalty, HOLDING_PENALTY)
-        penalty = holding_penalty
+        penalty = holding_penalty if holding_penalty else 0.0
 
         D_max = self.world.perimeter + 1
         D_b = 1.0 if _type == "lower" else D_max - 1
