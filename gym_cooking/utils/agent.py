@@ -298,28 +298,19 @@ class RealAgent:
                 priors_type=self.priors,
             )
         else:
-            if self.subtask is None:
-                self.delegator.set_priors(
-                    obs=copy.copy(env),
-                    belief=self.belief_state,
-                    incomplete_subtasks=self.incomplete_subtasks,
-                    subtask_to_wrapper_dict=self.subtask_to_wrapper_dict,
-                    priors_type=self.priors,
+            comm_info = None
+            if len(env.comms):
+                comm_info = self.comm_func.listen(
+                    self.name, env.comms, self.delegator.probs
                 )
-            else:
-                comm_info = None
-                if len(env.comms):
-                    comm_info = self.comm_func.listen(
-                        self.name, env.comms, self.delegator.probs
-                    )
 
-                self.delegator.bayes_update(
-                    obs_tm1=copy.copy(env.obs_tm1),
-                    b_tm1=copy.copy(belief.b_tm1),
-                    actions_tm1=env.agent_actions,
-                    comm_info=comm_info,
-                    beta=self.beta,
-                )
+            self.delegator.bayes_update(
+                obs_tm1=copy.copy(env.obs_tm1),
+                b_tm1=copy.copy(belief.b_tm1),
+                actions_tm1=env.agent_actions,
+                comm_info=comm_info,
+                beta=self.beta,
+            )
         self.subtask_removed = False
 
     def all_done(self):
