@@ -265,7 +265,6 @@ class OnionSalad(Recipe):
 class Burger(Recipe):
     def __init__(self):
         Recipe.__init__(self, "Burger")
-        self.add_ingredient(Tomato(state_index=-1))
         self.add_ingredient(Lettuce(state_index=-1))
         self.add_ingredient(MeatPatty(state_index=-1))
         self.add_ingredient(Potato(state_index=-1))
