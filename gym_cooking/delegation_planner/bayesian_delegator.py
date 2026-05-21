@@ -132,26 +132,15 @@ class BayesianDelegator(Delegator):
             ta_probs=ta_probs,
         )
 
-        value = (
-            self.planner.v_u[
+        value = self.planner.v_l[
+            (
                 (
-                    (
-                        self.planner.cur_state.get_repr(),
-                        self.planner.cur_belief.get_repr(),
-                    ),
-                    (subtask, subtask_agent_names),
-                )
-            ]
-            + self.planner.v_l[
-                (
-                    (
-                        self.planner.cur_state.get_repr(),
-                        self.planner.cur_belief.get_repr(),
-                    ),
-                    (subtask, subtask_agent_names),
-                )
-            ]
-        ) / 2.0
+                    self.planner.cur_state.get_repr(),
+                    self.planner.cur_belief.get_repr(),
+                ),
+                (subtask, subtask_agent_names),
+            )
+        ]
 
         return value
 
