@@ -592,7 +592,7 @@ class OvercookedEnvironment(gym.Env):
         agent = visible_agents[0]
 
         holding_penalty = min(holding_penalty, HOLDING_PENALTY)
-        penalty = holding_penalty if holding_penalty else 0.0
+        penalty = holding_penalty if use_holding_penalty else 0.0
 
         D_max = self.world.perimeter + 1
         D_b = 1.0 if _type == "lower" else D_max - 1

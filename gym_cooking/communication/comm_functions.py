@@ -143,10 +143,7 @@ class CommunicationFunctions:
                 )
 
             if not (0 <= selected_index < len(task_allocs)):
-                raise ValueError(
-                    f"'selected_index' out of range: {selected_index}; "
-                    f"expected 0 <= index < {len(task_allocs)}"
-                )
+                return None
 
             task_alloc = tuple(task_allocs[selected_index])
             comm_info[k] = (task_alloc, confidence, v)
