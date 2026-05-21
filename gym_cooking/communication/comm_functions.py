@@ -225,4 +225,4 @@ class CommunicationFunctions:
             elif p == max_prob:
                 ta_j_list.append(ta)
 
-        return random.choice(ta_j_list)
+        return random.choice(ta_j_list) if len(ta_probs) else None
