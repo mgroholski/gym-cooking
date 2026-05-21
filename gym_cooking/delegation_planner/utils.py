@@ -33,6 +33,9 @@ class SubtaskAllocDistribution:
             s += "}: " + str(p) + "\n"
         return s
 
+    def __len__(self):
+        return len(self.probs)
+
     def __copy__(self):
         new = self.__class__.__new__(self.__class__)
         new.probs = copy.deepcopy(self.probs)
