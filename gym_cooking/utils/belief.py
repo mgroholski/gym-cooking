@@ -262,8 +262,9 @@ class BeliefState:
                 start_obj = [start_obj]
 
             for obj in start_obj:
+                obj_sum_str = get_sum_cnt_str(obj)
                 self.beliefs[obj.full_name] = self._get_sum_cnt_prob(obj)
-                self.beliefs[get_sum_cnt_str(obj)] = []
+                self.beliefs[obj_sum_str] = []
                 exclude_set.add(obj.full_name)
                 exclude_set.add(get_sum_cnt_str(obj))
 
@@ -278,10 +279,6 @@ class BeliefState:
         for action_obj_name in action_objs_names:
             exclude_set.add(action_obj_name)
             self.beliefs[action_obj_name] = np.log(1.0)
-
-        evidence_obj_name = evidence_obj.full_name
-        self.beliefs[evidence_obj_name] = np.log(1.0)
-        exclude_set.add(evidence_obj_name)
 
         return exclude_set
 
@@ -321,6 +318,10 @@ class BeliefState:
             exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
             exclude_set = exclude | exclude_set
 
+            evidence_obj_name = evidence_obj.full_name
+            self.beliefs[evidence_obj_name] = self._get_sum_cnt_prob(evidence_obj)
+            exclude_set.add(evidence_obj_name)
+
             sum_cnt_str = get_sum_cnt_str(evidence_obj)
             self.beliefs[sum_cnt_str] = []
             exclude_set.add(sum_cnt_str)
@@ -341,12 +342,15 @@ class BeliefState:
                             self.taken_list.append(gs.holding)
 
                 exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
+                exclude_set = exclude | exclude_set
 
                 for obj in shared_list:
                     self.taken_name_set.remove(obj.full_name)
                     self.taken_list.remove(obj)
 
-                exclude_set = exclude | exclude_set
+                evidence_obj_name = evidence_obj.full_name
+                self.beliefs[evidence_obj_name] = np.log(1.0)
+                exclude_set.add(evidence_obj_name)
 
         for k, _ in self.beliefs.items():
             if k in exclude_set:

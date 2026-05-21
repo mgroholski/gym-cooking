@@ -105,14 +105,14 @@ class E2E_BRTDP:
         if not isinstance(start_obj, (list, tuple)):
             start_obj = [start_obj]
 
-        s_j_area = ((base_state.world.height - 2) * (base_state.world.width - 2)) / 2
+        s_j_area = ((base_state.world.height - 2) * (base_state.world.width - 3)) / 2.0
         s_j_area_prob = 1.0 / s_j_area
 
         base_state_prob = 1.0
 
         transition_probs_and_states = []  # (prob, state, belief)
 
-        # For each start object within the subtask and S^s, we expect
+        # For each subtask start object and S^s, we expect
         # the other agent to pick it up if the agent is in the correct location
         # and the other needed item is within S^j, the action object or, in the
         # case of Merge tasks, the other merge object.
@@ -121,13 +121,14 @@ class E2E_BRTDP:
             gs = base_state.world.get_gridsquare_at(loc)
             gs_holding = gs.holding
 
-            other_prob = 0.0
             if gs.holding is not None:
                 if isinstance(subtask, Merge):
                     if gs_holding.full_name == start_obj[0].full_name:
                         other_prob = belief[start_obj[1].full_name]
                     elif gs_holding.full_name == start_obj[1].full_name:
                         other_prob = belief[start_obj[1].full_name]
+                    else:
+                        other_prob = 0.0
                 else:
                     other_prob = belief[action_obj.name]
 
@@ -144,8 +145,8 @@ class E2E_BRTDP:
                     )
 
                     p = s_j_area_prob * other_prob
-                    base_state_prob *= 1.0 - p
                     transition_probs_and_states.append((p, new_state, new_belief))
+                    base_state_prob *= 1.0 - p
             else:
                 open_shared_locs.append(loc)
 
@@ -160,8 +161,8 @@ class E2E_BRTDP:
                     new_state = copy.copy(base_state)
                     new_state.task_queue[idx].is_complete = True
 
-                    goal_obj_name = task.recipe.full_state_plate_name
-                    goal_obj_belief = belief[goal_obj_name]
+                    start_obj_name = task.recipe.full_state_plate_name
+                    start_obj_belief = belief[start_obj_name]
                     delivery_belief = belief["Delivery"]
 
                     new_belief = copy.copy(belief)
@@ -169,8 +170,9 @@ class E2E_BRTDP:
                         new_state, state, a_dict, self.ta_probs, verbose=False
                     )
 
-                    p = s_j_area_prob * goal_obj_belief * delivery_belief
-                    base_state_prob *= 1.0 - p
+                    p = (
+                        s_j_area_prob * start_obj_belief * delivery_belief
+                    )  # correct location and start obj exists and delivery exists
                     transition_probs_and_states.append(
                         (
                             p,
@@ -178,6 +180,7 @@ class E2E_BRTDP:
                             new_belief,
                         )
                     )
+                    base_state_prob *= 1.0 - p
         else:
             # For each object that's a start or
             # goal object we simulate the agent setting down into the middle based
@@ -602,7 +605,7 @@ class E2E_BRTDP:
 
             s_repr, b_repr = self.repr_init(s_, b_)
 
-            b[s_repr] = p * (
+            b[(s_repr, b_repr)] = p * (
                 self.v_u[((s_repr, b_repr), (self.subtask, self.subtask_agent_names))]
                 - self.v_l[((s_repr, b_repr), (self.subtask, self.subtask_agent_names))]
             )

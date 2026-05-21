@@ -595,7 +595,7 @@ class OvercookedEnvironment(gym.Env):
         penalty = holding_penalty
 
         D_max = self.world.perimeter + 1
-        D_b = 1.0 if _type == "lower" else D_max
+        D_b = 1.0 if _type == "lower" else D_max - 1
 
         if subtask is None:
             return D_max + penalty
@@ -810,10 +810,7 @@ class OvercookedEnvironment(gym.Env):
         else:
             # Joint task
 
-            agent_locs = [
-                agent.location,
-                self.world.get_loc_bound(agent.location, _type),
-            ]
+            agent_location = agent.location
 
             open_shared_locs = self.world.shared_space_locs
 
@@ -833,64 +830,62 @@ class OvercookedEnvironment(gym.Env):
                     else:
                         b = belief[action_obj.name]
 
-                    for agent_location in agent_locs:
-                        for a_loc, b_loc in product(A_locs, open_shared_locs):
-                            dist = min(
-                                dist,
-                                (
-                                    nav_utils.manhattan_dist(agent_location, a_loc)
-                                    + nav_utils.manhattan_dist(a_loc, b_loc)
-                                    + (b * D_b + (1 - b) * D_max)
-                                ),
-                            )
+                    for a_loc, b_loc in product(A_locs, open_shared_locs):
+                        dist = min(
+                            dist,
+                            (
+                                nav_utils.manhattan_dist(agent_location, a_loc)
+                                + nav_utils.manhattan_dist(a_loc, b_loc)
+                                + (b * D_b + (1 - b) * D_max)
+                            ),
+                        )
 
                     if isinstance(subtask, recipe.Merge):
                         b = belief[start_obj[1].full_name]
                     else:
                         b = belief[start_obj.full_name]
 
-                    for agent_location in agent_locs:
-                        for a_loc, b_loc in product(open_shared_locs, B_locs):
-                            dist = min(
-                                dist,
-                                (
-                                    nav_utils.manhattan_dist(agent_location, a_loc)
-                                    + (b * D_b + (1 - b) * D_max)
-                                    + nav_utils.manhattan_dist(a_loc, b_loc)
-                                ),
-                            )
+                    for a_loc, b_loc in product(open_shared_locs, B_locs):
+                        dist = min(
+                            dist,
+                            (
+                                nav_utils.manhattan_dist(agent_location, a_loc)
+                                + (b * D_b + (1 - b) * D_max)
+                                + nav_utils.manhattan_dist(a_loc, b_loc)
+                            ),
+                        )
                 elif len(A_locs):
                     if isinstance(subtask, recipe.Merge):
                         b = belief[start_obj[0].full_name]
                     else:
                         b = belief[action_obj.name]
 
-                    for agent_location in agent_locs:
-                        for a_loc, b_loc in product(A_locs, open_shared_locs):
-                            dist = min(
-                                dist,
-                                (
-                                    nav_utils.manhattan_dist(agent_location, a_loc)
-                                    + nav_utils.manhattan_dist(a_loc, b_loc)
-                                    + (b * D_b + (1 - b) * D_max)
-                                ),
-                            )
+                    for a_loc, b_loc in product(A_locs, open_shared_locs):
+                        # agent_location -> start object -> start object to nearest counter -> bound to action object
+                        dist = min(
+                            dist,
+                            (
+                                nav_utils.manhattan_dist(agent_location, a_loc)
+                                + nav_utils.manhattan_dist(a_loc, b_loc)
+                                + (b * D_b + (1 - b) * D_max)
+                            ),
+                        )
                 else:
                     if isinstance(subtask, recipe.Merge):
                         b = belief[start_obj[1].full_name]
                     else:
                         b = belief[start_obj.full_name]
 
-                    for agent_location in agent_locs:
-                        for a_loc, b_loc in product(open_shared_locs, B_locs):
-                            dist = min(
-                                dist,
-                                (
-                                    nav_utils.manhattan_dist(agent_location, a_loc)
-                                    + (b * D_b + (1 - b) * D_max)
-                                    + nav_utils.manhattan_dist(a_loc, b_loc)
-                                ),
-                            )
+                    for a_loc, b_loc in product(open_shared_locs, B_locs):
+                        # agent_location -> nearest_shared -> other_object_bound to nearest_shared -> action object
+                        dist = min(
+                            dist,
+                            (
+                                nav_utils.manhattan_dist(agent_location, a_loc)
+                                + (b * D_b + (1 - b) * D_max)
+                                + nav_utils.manhattan_dist(a_loc, b_loc)
+                            ),
+                        )
             else:
                 raise NotImplementedError()
             return max(dist + penalty, 1.0)
