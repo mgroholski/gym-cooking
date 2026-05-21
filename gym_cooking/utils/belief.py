@@ -142,7 +142,7 @@ class BeliefState:
     def get_repr(self):
         return tuple(
             [
-                (self.taken_name_cnt[k].get_repr(), v)
+                (self.taken_name_to_obj[k].get_repr(), v)
                 for k, v in self.taken_name_cnt.items()
             ]
             + sorted(

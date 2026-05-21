@@ -10,6 +10,7 @@ SimpleLettuce
 SimpleTomato
 OnionSalad
 Salad
+Burger
 
 2 1
 5 1
