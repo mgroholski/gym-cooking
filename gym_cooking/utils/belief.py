@@ -237,7 +237,7 @@ class BeliefState:
         obj_full_name = obj.full_name
         if obj_full_name not in self.taken_name_cnt:
             self.taken_name_cnt[obj_full_name] = 0
-            self.taken_name_to_obj[obj_full_name]
+            self.taken_name_to_obj[obj_full_name] = obj
 
         self.taken_name_cnt[obj_full_name] += 1
 
