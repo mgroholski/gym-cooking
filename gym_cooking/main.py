@@ -82,18 +82,18 @@ def parse_arguments():
     )
 
     # Navigation Planner
-    parser.add_argument("--alpha", type=float, default=0.01, help="Alpha for BRTDP")
+    parser.add_argument("--alpha", type=float, default=0.005, help="Alpha for BRTDP")
     parser.add_argument("--tau", type=int, default=2, help="Normalize v diff")
     parser.add_argument(
         "--cap",
         type=int,
-        default=75,
+        default=150,
         help="Max number of steps in each main loop of BRTDP",
     )
     parser.add_argument(
         "--main-cap",
         type=int,
-        default=100,
+        default=200,
         help="Max number of main loops in each run of BRTDP",
     )
 

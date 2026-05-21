@@ -571,7 +571,7 @@ class OvercookedEnvironment(gym.Env):
 
         # Calculate extra holding penalty if the object is irrelevant.
         holding_penalty = 0.0
-        HOLDING_PENALTY = 1.0
+        HOLDING_PENALTY = (self.world.perimeter + 1) * 1
 
         for agent in self.sim_agents:
             if agent.name in subtask_agent_names:
@@ -621,7 +621,7 @@ class OvercookedEnvironment(gym.Env):
                         )
 
                 elif isinstance(subtask, recipe.Merge):
-                    dist = float("inf")
+                    dist = self.world.perimeter + 1
                     for a_loc, b_loc in product(A_locs, B_locs):
                         dist = min(
                             dist,
@@ -806,7 +806,7 @@ class OvercookedEnvironment(gym.Env):
                 else:
                     raise NotImplementedError()
 
-            return max(dist + penalty, 1.0)
+            return dist + penalty
         else:
             # Joint task
 
@@ -888,7 +888,7 @@ class OvercookedEnvironment(gym.Env):
                         )
             else:
                 raise NotImplementedError()
-            return max(dist + penalty, 1.0)
+            return dist + penalty
 
     def is_collision(self, agent1_loc, agent2_loc, agent1_action, agent2_action):
         """Returns whether agents are colliding.
