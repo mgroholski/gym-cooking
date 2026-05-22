@@ -87,13 +87,13 @@ def parse_arguments():
     parser.add_argument(
         "--cap",
         type=int,
-        default=150,
+        default=75,
         help="Max number of steps in each main loop of BRTDP",
     )
     parser.add_argument(
         "--main-cap",
         type=int,
-        default=200,
+        default=100,
         help="Max number of main loops in each run of BRTDP",
     )
 
