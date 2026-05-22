@@ -398,7 +398,8 @@ class BeliefState:
             elif k in self.cnt_key_set:
                 if k[2:-1] in self.initial_ing_key_set:
                     self.beliefs[k] = self._get_log_prob_by_key(
-                        get_dispenser_str_from_str(k[2:-1])
+
+                        get_dispenser_str_from_str(k[2:-1]),
                     )
                 else:
                     self.beliefs[k] = self.get_created_prob(k[2:-1], ta_probs)
@@ -408,6 +409,20 @@ class BeliefState:
                     k[6:-2]
                 ) + self._get_log_prob_by_key(k[4:-1])
                 self.beliefs[k].append(timestep_prob)
+
+
+
+        for k,v in self.beliefs.items():
+            if isinstance(v, list):
+                try:
+                    self._get_union_prob(tuple(v))
+                except Exception as e:
+                    print(f"Exception at key {k}!")
+                    raise e
+            else:
+                if np.isnan(v):
+                    raise Exception(f"{k} is nan!")
+
         return
 
     def get_shortest_action_path_to(self, evidence_obj, recipes):
@@ -588,7 +603,9 @@ class BeliefState:
         return np.exp(self.beliefs[key])
 
     def __getitem__(self, key):
-        return np.exp(self.beliefs[key])
+        return np.exp(self.bel
+
+        iefs[key])
 
     def _get_log_prob_by_key(self, key):
         return self.beliefs[key]
@@ -643,6 +660,7 @@ class BeliefState:
     def _get_union_prob(self, prob_tuple):
         if not prob_tuple:
             return NEG_INF_LOG_VAL
+
         if len(prob_tuple) == 1:
             return min(prob_tuple[0], 0.0)
 
@@ -655,6 +673,10 @@ class BeliefState:
 
         # log(1 - exp(log_prod_not)) in a stable way
         prob = np.log1p(-np.exp(log_prod_not))
+
+        if np.isnan(prob):
+            print(prob_tuple)
+            raise Exception(f'Nan from {prob_tuple}')
 
         return min(prob, 0.0)
 
