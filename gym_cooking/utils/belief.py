@@ -659,6 +659,9 @@ class BeliefState:
         return min(prob, 0.0)
 
     def reset_subtask(self, subtask):
+        if isinstance(subtask, recipe_utils.Deliver):
+            return
+
         _, goal_obj = nav_utils.get_subtask_obj(subtask)
         if goal_obj is not None:
             cnt_str = get_cnt_str(goal_obj)

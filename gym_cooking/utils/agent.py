@@ -117,14 +117,14 @@ class RealAgent:
 
         # Select subtask based on Bayesian Delegation.
         self.update_subtasks(env=obs, belief=self.belief_state)
+        print(
+            f"Post-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}"
+        )
+
         self.new_subtask, self.new_subtask_agent_names, self.new_task_alloc = (
             self.delegator.select_subtask(
                 agent_name=self.name,
             )
-        )
-
-        print(
-            f"Post-Update Task Allocation Probabilities:\n{str(self.delegator.probs)}"
         )
 
         self.plan(copy.copy(obs))
@@ -232,26 +232,26 @@ class RealAgent:
             if self.subtask_complete:
                 if self.subtask in self.incomplete_subtasks:
                     print(f"Agent Remove: Removing {self.subtask}...")
-                    self.remove_subtask(self.subtask)
+                    self.remove_subtask(self.subtask, other_agent=False)
                     self.subtask_complete = True
 
         else:
             print("{} has no subtask".format(color(self.name, self.color)))
 
         for incomplete_subtask in self.incomplete_subtasks:
-            if (
-                incomplete_subtask == self.subtask and self.subtask_complete
-            ):  # If the agents have the same subtask and the current agent finish the subtask then we want to check if
+            if incomplete_subtask == self.subtask and self.subtask_complete:
+                # If the agents have the same subtask and the current agent finishes
+                # the subtask then we want to check if there's two
                 if self.check_incomplete_subtask(
                     world, belief, incomplete_subtask, cnt=1
                 ):
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
-                    self.remove_subtask(incomplete_subtask)
+                    self.remove_subtask(incomplete_subtask, other_agent=True)
                     break
             else:
                 if self.check_incomplete_subtask(world, belief, incomplete_subtask):
                     print(f"Non-Agent Remove: Removing {incomplete_subtask}...")
-                    self.remove_subtask(incomplete_subtask)
+                    self.remove_subtask(incomplete_subtask, other_agent=True)
                     break
 
         self.subtask_to_wrapper_dict = self.get_subtasks(world, belief)
@@ -264,7 +264,7 @@ class RealAgent:
             ", ".join(str(t) for t in self.incomplete_subtasks),
         )
 
-    def remove_subtask(self, subtask):
+    def remove_subtask(self, subtask, other_agent):
         if (
             subtask in self.subtask_to_wrapper_dict
             and self.subtask_to_wrapper_dict[subtask].cnt > 1
@@ -278,7 +278,8 @@ class RealAgent:
 
         self.subtask_removed = True
         self.delegator.planner.reset_value_caches(subtask)
-        self.belief_state.reset_subtask(subtask)
+        if other_agent:
+            self.belief_state.reset_subtask(subtask)
 
     def update_subtasks(self, env, belief):
         """Update incomplete subtasks---relevant for Bayesian Delegation."""
