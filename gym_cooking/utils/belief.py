@@ -665,6 +665,6 @@ class BeliefState:
         _, goal_obj = nav_utils.get_subtask_obj(subtask)
         if goal_obj is not None:
             cnt_str = get_cnt_str(goal_obj)
-            self.beliefs[cnt_str] = 0.0
+            self.beliefs[cnt_str] = np.log(0.0)
 
             print(f"[BeliefState.reset_subtask] Resetting {cnt_str} belief to 0.0.")
