@@ -569,30 +569,41 @@ class OvercookedEnvironment(gym.Env):
     ):
         """Return the bound under this subtask between objects."""
 
-        # Calculate extra holding penalty if the object is irrelevant.
-        holding_penalty = 0.0
-        HOLDING_PENALTY = (self.world.perimeter + 1) * 10
-
-        for agent in self.sim_agents:
-            if agent.name in subtask_agent_names:
-                # Check for whether the agent is holding something.
-                if agent.holding is not None:
-                    if isinstance(subtask, recipe.Merge):
-                        if agent.holding not in start_obj and agent.holding != goal_obj:
-                            holding_penalty += HOLDING_PENALTY
-                    else:
-                        if agent.holding != start_obj and agent.holding != goal_obj:
-                            # Add one "distance"-unit cost
-                            holding_penalty += HOLDING_PENALTY
-
         visible_agents = [
             agent for agent in self.sim_agents if agent.location is not None
         ]
         assert len(visible_agents) == 1, f"Have {len(visible_agents)} visible agents."
         agent = visible_agents[0]
 
-        holding_penalty = min(holding_penalty, HOLDING_PENALTY)
-        penalty = holding_penalty if use_holding_penalty else 0.0
+        # Calculate extra holding penalty if the object is irrelevant.
+        holding_penalty = 0.0
+
+        if use_holding_penalty:
+            for agent in visible_agents:
+                if agent.name in subtask_agent_names:
+                    # Check for whether the agent is holding something.
+                    if agent.holding is not None:
+                        if isinstance(subtask, recipe.Merge):
+                            if (
+                                agent.holding not in start_obj
+                                and agent.holding != goal_obj
+                            ):
+                                holding_penalty += (
+                                    self.world.get_min_dist_to_nearest_placeable_gs(
+                                        agent.location, agent.holding
+                                    )
+                                )
+                        else:
+                            if agent.holding != start_obj and agent.holding != goal_obj:
+                                holding_penalty += (
+                                    self.world.get_min_dist_to_nearest_placeable_gs(
+                                        agent.location, agent.holding
+                                    )
+                                )
+
+        penalty = (
+            5 * (holding_penalty)
+        )  # Arbitrary multiplier to make the penalty standout more than the distance to task completion.
 
         D_max = self.world.perimeter + 1
         D_b = 1.0 if _type == "lower" else D_max - 1

@@ -313,3 +313,14 @@ def get_subtask_obj(subtask):
         raise NotImplementedError("{} was not recognized".format(subtask))
 
     return start_obj, goal_obj
+
+
+def can_set_down(gs, obj):
+    if isinstance(gs, Counter):
+        return gs.holding is None and not gs.is_dispenser
+    elif isinstance(gs, Cutboard):
+        return not obj.needs_chopped()
+    elif isinstance(gs, CookingPan):
+        return not obj.needs_cooked()
+
+    return False

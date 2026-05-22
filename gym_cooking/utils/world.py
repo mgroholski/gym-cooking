@@ -4,6 +4,7 @@ from functools import lru_cache
 from itertools import combinations, product
 
 import matplotlib.pyplot as plt
+import navigation_planner.utils as nav_utils
 import networkx as nx
 import numpy as np
 import recipe_planner.utils as recipe
@@ -378,3 +379,24 @@ class World:
             return max_loc
         else:
             raise Exception(f"Invalid _type: {_type}")
+
+    def get_min_dist_to_nearest_placeable_gs(self, agent_loc, obj):
+        dist = self.perimeter + 1
+        for A in [gs for gs in self.get_object_list() if isinstance(gs, GridSquare)]:
+            if not nav_utils.can_set_down(A, obj):
+                continue
+
+            A_possible_na = [(0, 0)] if not A.collidable else World.NAV_ACTIONS
+            A_loc = A.location
+            for A_na in A_possible_na:
+                try:
+                    dist = min(
+                        dist,
+                        nx.shortest_path_length(
+                            self.reachability_graph, (agent_loc, (0, 0)), (A_loc, A_na)
+                        ),
+                    )
+                except:
+                    continue
+
+        return dist
