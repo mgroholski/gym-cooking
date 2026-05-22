@@ -203,6 +203,10 @@ class BayesianDelegator(Delegator):
 
         # Weight inversely by distance.
         for subtask_alloc in some_probs.enumerate_subtask_allocs():
+            print(
+                f"[{self.agent_name}-get_spatial_priors] Getting spatial prior for {subtask_alloc}."
+            )
+
             total_weight = 0
             for t in subtask_alloc:
                 if t.subtask is not None:

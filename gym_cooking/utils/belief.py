@@ -147,14 +147,6 @@ class BeliefState:
             ]
             + sorted(
                 [
-                    (k, v)
-                    for k, v in self.beliefs.items()
-                    if k not in self.sum_cnt_key_set
-                ],
-                key=lambda a: a[0],
-            )
-            + sorted(
-                [
                     (k, self._get_union_prob(v))
                     for k, v in self.beliefs.items()
                     if k in self.sum_cnt_key_set
@@ -665,3 +657,11 @@ class BeliefState:
         prob = np.log1p(-np.exp(log_prod_not))
 
         return min(prob, 0.0)
+
+    def reset_subtask(self, subtask):
+        _, goal_obj = nav_utils.get_subtask_obj(subtask)
+        if goal_obj is not None:
+            cnt_str = get_cnt_str(goal_obj)
+            self.beliefs[cnt_str] = 0.0
+
+            print(f"[BeliefState.reset_subtask] Resetting {cnt_str} belief to 0.0.")
