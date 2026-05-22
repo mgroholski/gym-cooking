@@ -598,7 +598,7 @@ class OvercookedEnvironment(gym.Env):
         D_b = 1.0 if _type == "lower" else D_max - 1
 
         if subtask is None:
-            return D_max + penalty
+            return max(D_max + penalty, 1.0)
 
         A_locs, B_locs = self.get_AB_locs_given_objs(
             subtask, subtask_agent_names, start_obj, goal_obj, action_obj
@@ -806,7 +806,7 @@ class OvercookedEnvironment(gym.Env):
                 else:
                     raise NotImplementedError()
 
-            return dist + penalty
+            return max(dist + penalty, 1.0)
         else:
             # Joint task
 
@@ -821,7 +821,7 @@ class OvercookedEnvironment(gym.Env):
                 or isinstance(subtask, recipe.Merge)
             ):
                 if not len(A_locs) and not len(B_locs):
-                    return D_max + penalty
+                    return max(D_max + penalty, 1.0)
 
                 dist = D_max
                 if len(A_locs) and len(B_locs):
@@ -888,7 +888,7 @@ class OvercookedEnvironment(gym.Env):
                         )
             else:
                 raise NotImplementedError()
-            return dist + penalty
+            return max(dist + penalty, 1.0)
 
     def is_collision(self, agent1_loc, agent2_loc, agent1_action, agent2_action):
         """Returns whether agents are colliding.
