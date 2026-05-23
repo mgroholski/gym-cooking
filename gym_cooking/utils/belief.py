@@ -398,7 +398,6 @@ class BeliefState:
             elif k in self.cnt_key_set:
                 if k[2:-1] in self.initial_ing_key_set:
                     self.beliefs[k] = self._get_log_prob_by_key(
-
                         get_dispenser_str_from_str(k[2:-1]),
                     )
                 else:
@@ -409,19 +408,6 @@ class BeliefState:
                     k[6:-2]
                 ) + self._get_log_prob_by_key(k[4:-1])
                 self.beliefs[k].append(timestep_prob)
-
-
-
-        for k,v in self.beliefs.items():
-            if isinstance(v, list):
-                try:
-                    self._get_union_prob(tuple(v))
-                except Exception as e:
-                    print(f"Exception at key {k}!")
-                    raise e
-            else:
-                if np.isnan(v):
-                    raise Exception(f"{k} is nan!")
 
         return
 
@@ -603,9 +589,7 @@ class BeliefState:
         return np.exp(self.beliefs[key])
 
     def __getitem__(self, key):
-        return np.exp(self.bel
-
-        iefs[key])
+        return np.exp(self.beliefs[key])
 
     def _get_log_prob_by_key(self, key):
         return self.beliefs[key]
@@ -676,7 +660,7 @@ class BeliefState:
 
         if np.isnan(prob):
             print(prob_tuple)
-            raise Exception(f'Nan from {prob_tuple}')
+            raise Exception(f"Nan from {prob_tuple}")
 
         return min(prob, 0.0)
 
@@ -687,6 +671,6 @@ class BeliefState:
         _, goal_obj = nav_utils.get_subtask_obj(subtask)
         if goal_obj is not None:
             cnt_str = get_cnt_str(goal_obj)
-            self.beliefs[cnt_str] = 0.0
+            self.beliefs[cnt_str] = np.log(0.0)
 
             print(f"[BeliefState.reset_subtask] Resetting {cnt_str} belief to 0.0.")
