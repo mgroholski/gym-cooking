@@ -445,9 +445,8 @@ class E2E_BRTDP:
             self.has_more_obj = lambda x: int(x) > self.cur_obj_count
 
             def is_goal_state(w, b):
-                return (
-                    self.has_more_obj(len(w.get_all_object_locs(self.goal_obj)))
-                    or b[get_cnt_str(self.goal_obj)] >= BELIEF_THRESHOLD
+                return self.has_more_obj(len(w.get_all_object_locs(self.goal_obj))) or (
+                    b is not None and b[get_cnt_str(self.goal_obj)] >= BELIEF_THRESHOLD
                 )  # Observable objects or meets threshold
 
             self.is_goal_state = lambda e, b: is_goal_state(e.world, b)

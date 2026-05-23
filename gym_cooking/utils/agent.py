@@ -217,7 +217,9 @@ class RealAgent:
         belief = self.belief_state
 
         if not (self.subtask is None or len(self.subtask_agent_names) == 0):
-            self.subtask_complete = self.is_subtask_complete(world, belief)
+            self.subtask_complete = self.is_subtask_complete(
+                world, None
+            )  # We make beliefs None since we're testing if agent i finished.
             print(
                 "{} done with {} according to planner: {}\nplanner has subtask {} with subtask object {}".format(
                     color(self.name, self.color),
@@ -379,7 +381,10 @@ class RealAgent:
         subtask_action_object = nav_utils.get_subtask_action_obj(subtask=subtask)
 
         goal_obj_cnt_name = get_cnt_str(goal_obj)
-        goal_obj_cnt_belief = belief[goal_obj_cnt_name]
+        if belief is None:
+            goal_obj_cnt_belief = 0.0
+        else:
+            goal_obj_cnt_belief = belief[goal_obj_cnt_name]
 
         if isinstance(subtask, Deliver):
             # Checks count in the stored world.
