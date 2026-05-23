@@ -270,10 +270,10 @@ class BeliefState:
 
             for obj in start_obj:
                 obj_sum_str = get_sum_cnt_str(obj)
-                self.beliefs[obj.full_name] = self._get_sum_cnt_prob(obj)
+                self.beliefs[obj.full_name] = self._get_sum_cnt_log_prob(obj)
                 self.beliefs[obj_sum_str] = []
                 exclude_set.add(obj.full_name)
-                exclude_set.add(get_sum_cnt_str(obj))
+                exclude_set.add(obj_sum_str)
 
                 # If the object was taken and used in this path
                 # we infer that the agent no longer has it on their side.
@@ -329,7 +329,7 @@ class BeliefState:
             exclude_set = exclude | exclude_set
 
             evidence_obj_name = evidence_obj.full_name
-            self.beliefs[evidence_obj_name] = self._get_sum_cnt_prob(evidence_obj)
+            self.beliefs[evidence_obj_name] = self._get_sum_cnt_log_prob(evidence_obj)
             exclude_set.add(evidence_obj_name)
 
             sum_cnt_str = get_sum_cnt_str(evidence_obj)
@@ -632,15 +632,15 @@ class BeliefState:
             if k not in self.sum_cnt_key_set:
                 s += f"\t{k}: {np.exp(v)}\n"
             else:
-                s += f"\t{k}: {np.exp(self._get_union_prob(v))}\n"
+                s += f"\t{k}: {np.exp(self._get_union_log_prob(v))}\n"
 
         return s
 
-    def _get_sum_cnt_prob(self, evidence_obj):
+    def _get_sum_cnt_log_prob(self, evidence_obj):
         prob_list = self.beliefs[get_sum_cnt_str(evidence_obj)]
-        return self._get_union_prob(tuple(prob_list))
+        return self._get_union_log_prob(tuple(prob_list))
 
-    def _get_union_prob(self, prob_tuple):
+    def _get_union_log_prob(self, prob_tuple):
         if not prob_tuple:
             return NEG_INF_LOG_VAL
 
