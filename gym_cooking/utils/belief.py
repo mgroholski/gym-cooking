@@ -147,7 +147,7 @@ class BeliefState:
             ]
             + sorted(
                 [
-                    (k, self._get_union_prob(v))
+                    (k, self._get_union_log_prob(v))
                     for k, v in self.beliefs.items()
                     if k in self.sum_cnt_key_set
                 ],
