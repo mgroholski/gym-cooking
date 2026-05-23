@@ -224,7 +224,7 @@ class RealAgent:
                 "{} done with {} according to planner: {}\nplanner has subtask {} with subtask object {}".format(
                     color(self.name, self.color),
                     self.subtask,
-                    self.is_subtask_complete(world, belief),
+                    self.is_subtask_complete(world, None),
                     self.planner.subtask,
                     self.planner.goal_obj,
                 )
