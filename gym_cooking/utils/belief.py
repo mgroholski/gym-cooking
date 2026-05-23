@@ -321,7 +321,6 @@ class BeliefState:
         if evidence_type == EvidenceType.PICK_UP:
             self._add_to_taken(evidence_obj)
             self.beliefs[evidence_obj.full_name] = np.log(1.0)
-            return
         elif (
             evidence_type == EvidenceType.SET_DOWN
             or evidence_type == EvidenceType.DELIVER
@@ -657,10 +656,6 @@ class BeliefState:
 
         # log(1 - exp(log_prod_not)) in a stable way
         prob = np.log1p(-np.exp(log_prod_not))
-
-        if np.isnan(prob):
-            print(prob_tuple)
-            raise Exception(f"Nan from {prob_tuple}")
 
         return min(prob, 0.0)
 
