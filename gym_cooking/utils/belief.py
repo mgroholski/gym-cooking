@@ -372,7 +372,7 @@ class BeliefState:
                         get_dispenser_str_from_str(k)
                     )
                 else:
-                    created_log_prob = self.get_created_prob(k, ta_probs)
+                    created_log_prob = self.get_created_log_prob(k, ta_probs)
 
                 exist_before_log_prob = self._get_log_prob_by_key(k)
                 goal_not_created_log_prob = 0.0
@@ -400,7 +400,7 @@ class BeliefState:
                         get_dispenser_str_from_str(k[2:-1]),
                     )
                 else:
-                    self.beliefs[k] = self.get_created_prob(k[2:-1], ta_probs)
+                    self.beliefs[k] = self.get_created_log_prob(k[2:-1], ta_probs)
             elif k in self.sum_cnt_key_set:
                 # Probability of count increasing and existing before
                 timestep_prob = self._get_log_prob_by_key(
@@ -429,7 +429,7 @@ class BeliefState:
 
         return action_path
 
-    def get_created_prob(self, key, ta_probs):
+    def get_created_log_prob(self, key, ta_probs):
         p = NEG_INF_LOG_VAL
         for ta in ta_probs.enumerate_subtask_allocs():
             for t in ta:
@@ -464,7 +464,7 @@ class BeliefState:
                         log_ta = np.log(ta_probs.get(ta))
                         p = np.logaddexp(p, log_a + log_b + log_ta)
 
-        return p
+        return min(p, 0.0)
 
     def get_evidence(self, obs_t, obs_tm1, a_tm1):
         sim_obs_tm1 = copy.copy(obs_tm1)
