@@ -1,8 +1,8 @@
 -/|-/|-
 l  -  l
 t  *  t
-M  p  M
-P  -  P
+m  p  m
+a  -  a
 o  -  o
 -------
 
