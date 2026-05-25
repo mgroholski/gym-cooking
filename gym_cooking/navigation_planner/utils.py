@@ -88,6 +88,7 @@ def get_single_actions(env, agent):
         # Check to make sure not at boundary
         if new_loc not in agent_locs:
             gs = env.world.get_gridsquare_at(new_loc)
+
             # Can move into floors
             if not gs.collidable:
                 actions.append(t)

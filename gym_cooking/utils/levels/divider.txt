@@ -2,15 +2,14 @@
 -  -  |
 -  *  -
 l  p  -
-t  -  P
+t  -  a
 -  -  o
------M-
+-----m-
 
 SimpleLettuce
 SimpleTomato
-OnionSalad
 Salad
-Burger
+OnionSalad
 
 2 1
 5 1

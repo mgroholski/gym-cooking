@@ -170,8 +170,8 @@ class OvercookedEnvironment(gym.Env):
                 # Phase 1: Read in kitchen map.
                 elif phase == 1:
                     for x, rep in enumerate(line):
-                        # Object, i.e. Tomato, Lettuce, Onion, Plate. Potato, MeatPatty.
-                        if rep in "tlopPM":
+                        # Object, i.e. Tomato, Lettuce, Onion, Plate, Potato, MeatPatty.
+                        if rep in "tlopam":
                             counter = Counter(location=(x, y))
                             obj = Object(location=(x, y), contents=RepToClass[rep]())
                             counter.acquire(obj=obj)
@@ -179,7 +179,7 @@ class OvercookedEnvironment(gym.Env):
                             self.world.insert(obj=obj)
                             counter.is_dispenser = True
 
-                        # GridSquare, i.e. Floor, Counter, Cutboard, Delivery.
+                        # GridSquare, i.e. Floor, Counter, Cutboard, CookingPan, Delivery.
                         elif rep in RepToClass:
                             newobj = RepToClass[rep]((x, y))
                             self.world.objects.setdefault(newobj.name, []).append(
@@ -488,7 +488,7 @@ class OvercookedEnvironment(gym.Env):
                 )
             )
 
-            # B: Cook objects.
+            # B: CookingPan objects.
             B_locs = self.world.get_all_object_locs(obj=subtask_action_obj)
 
         # For Merge operator on Deliver subtasks, we look at objects that can be

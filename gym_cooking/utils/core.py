@@ -25,8 +25,8 @@ class Rep:
     LETTUCE = "l"
     ONION = "o"
     PLATE = "p"
-    POTATO = "P"
-    MEAT_PATTY = "M"
+    POTATO = "a"
+    MEAT_PATTY = "m"
 
 
 class GridSquare:
@@ -469,7 +469,7 @@ class Potato(Food):
     def __init__(self, state_index=0):
         self.state_index = state_index  # index in food's state sequence
         self.state_seq = FoodSequence.FRESH_COOKED
-        self.rep = "P"
+        self.rep = "a"
         self.name = "Potato"
         Food.__init__(self)
 
@@ -487,7 +487,7 @@ class MeatPatty(Food):
     def __init__(self, state_index=0):
         self.state_index = state_index  # index in food's state sequence
         self.state_seq = FoodSequence.FRESH_COOKED
-        self.rep = "M"
+        self.rep = "m"
         self.name = "MeatPatty"
         Food.__init__(self)
 

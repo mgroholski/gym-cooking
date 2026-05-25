@@ -270,3 +270,11 @@ class Burger(Recipe):
         self.add_ingredient(Potato(state_index=-1))
         self.add_goal()
         self.add_merge_actions()
+
+
+class BakedPotato(Recipe):
+    def __init__(self):
+        Recipe.__init__(self, "BakedPotato")
+        self.add_ingredient(Potato(state_index=-1))
+        self.add_goal()
+        self.add_merge_actions()
