@@ -820,9 +820,7 @@ class OvercookedEnvironment(gym.Env):
             return max(dist + penalty, 1.0)
         else:
             # Joint task
-
             agent_location = agent.location
-
             open_shared_locs = self.world.shared_space_locs
 
             if (
@@ -867,7 +865,7 @@ class OvercookedEnvironment(gym.Env):
                         )
                 elif len(A_locs):
                     if isinstance(subtask, recipe.Merge):
-                        b = belief[start_obj[0].full_name]
+                        b = belief[start_obj[1].full_name]
                     else:
                         b = belief[action_obj.name]
 
@@ -883,7 +881,7 @@ class OvercookedEnvironment(gym.Env):
                         )
                 else:
                     if isinstance(subtask, recipe.Merge):
-                        b = belief[start_obj[1].full_name]
+                        b = belief[start_obj[0].full_name]
                     else:
                         b = belief[start_obj.full_name]
 
