@@ -532,7 +532,10 @@ class E2E_BRTDP:
         lower = lower * (self.time_cost + self.action_cost)
         upper = upper * (self.time_cost + self.action_cost)
 
-        if len(self.subtask_agent_names) == 1:
+        if (
+            len(self.subtask_agent_names) == 1
+            and self.subtask_agent_names[0] == env_state.sim_agents[0].name
+        ):
             # Inspired heuristic from the original code to force exploration.
             # https://github.com/rosewang2008/gym-cooking/blob/74570c1f1a88fabf8fb7d3ddec10aaf2274a2403/gym_cooking/navigation_planner/planners/e2e_brtdp.py#L410
             upper *= 5
