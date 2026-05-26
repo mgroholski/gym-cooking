@@ -143,17 +143,7 @@ class BayesianDelegator(Delegator):
             )
         ]
 
-        value_u = self.planner.v_u[
-            (
-                (
-                    self.planner.cur_state.get_repr(),
-                    self.planner.cur_belief.get_repr(),
-                ),
-                (subtask, subtask_agent_names),
-            )
-        ]
-
-        return (value_u + value_l) / 2.0
+        return value_l
 
     def prune_subtask_allocs(self, observation, belief, subtask_alloc_probs):
         """Removing subtask allocs from subtask_alloc_probs that are
