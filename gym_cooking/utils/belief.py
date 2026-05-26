@@ -43,7 +43,11 @@ def init_ingredient_belief(obj, obs):
         return 0.0
 
     # Anything in the observable state is reachable by the observer.
-    if not len(obs.world.get_all_object_locs(obj)):
+    # We include shared dispensers for simplificiation.
+    if (
+        not len(obs.world.get_all_object_locs(obj))
+        or obj.full_name in obs.world.shared_dispensers_dict
+    ):
         return 1.0
 
     return UNCERTAIN_INIT_PROB
@@ -124,7 +128,11 @@ class BeliefState:
                     if action_obj is not None:
                         self.beliefs[action_obj.name] = (
                             1.0
-                            if not len(obs.world.get_all_object_locs(action_obj))
+                            if (
+                                not len(obs.world.get_all_object_locs(action_obj))
+                                or action_obj.name
+                                in obs.world.shared_action_objects_dict
+                            )
                             else UNCERTAIN_INIT_PROB
                         )
                         self.name_to_obj[action_obj.name] = action_obj
