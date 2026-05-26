@@ -272,9 +272,25 @@ class Burger(Recipe):
         self.add_merge_actions()
 
 
-class BakedPotato(Recipe):
+class SimplePotato(Recipe):
     def __init__(self):
-        Recipe.__init__(self, "BakedPotato")
+        Recipe.__init__(self, "SimplePotato")
         self.add_ingredient(Potato(state_index=-1))
+        self.add_goal()
+        self.add_merge_actions()
+
+
+class SimpleMeat(Recipe):
+    def __init__(self):
+        Recipe.__init__(self, "SimpleMeat")
+        self.add_ingredient(MeatPatty(state_index=-1))
+        self.add_goal()
+        self.add_merge_actions()
+
+
+class SimpleOnion(Recipe):
+    def __init__(self):
+        Recipe.__init__(self, "SimpleOnion")
+        self.add_ingredient(Onion(state_index=-1))
         self.add_goal()
         self.add_merge_actions()
