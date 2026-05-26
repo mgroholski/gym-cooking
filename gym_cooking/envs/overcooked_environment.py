@@ -835,7 +835,7 @@ class OvercookedEnvironment(gym.Env):
                 dist = D_max
                 if len(A_locs) and len(B_locs):
                     if isinstance(subtask, recipe.Merge):
-                        b = belief[start_obj[0].full_name]
+                        b = belief[start_obj[1].full_name]
                     else:
                         b = belief[action_obj.name]
 
@@ -850,7 +850,7 @@ class OvercookedEnvironment(gym.Env):
                         )
 
                     if isinstance(subtask, recipe.Merge):
-                        b = belief[start_obj[1].full_name]
+                        b = belief[start_obj[0].full_name]
                     else:
                         b = belief[start_obj.full_name]
 
