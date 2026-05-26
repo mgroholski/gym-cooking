@@ -6,10 +6,11 @@ a  -  a
 o  -  o
 -------
 
-Salad
-OnionSalad
 SimpleLettuce
 SimpleTomato
+Salad
+OnionSalad
+Burger
 
 2 1
 5 1

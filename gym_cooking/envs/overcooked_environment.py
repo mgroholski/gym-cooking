@@ -648,13 +648,6 @@ class OvercookedEnvironment(gym.Env):
                         )
                 else:
                     raise NotImplementedError()
-
-                # Inspired heuristic from the original code to force exploration.
-                # https://github.com/rosewang2008/gym-cooking/blob/74570c1f1a88fabf8fb7d3ddec10aaf2274a2403/gym_cooking/navigation_planner/planners/e2e_brtdp.py#L410
-                if _type == "upper":
-                    dist *= 5
-                elif _type == "lower":
-                    dist -= 1.09
             else:
                 # Single task for non-visible agent
                 if (

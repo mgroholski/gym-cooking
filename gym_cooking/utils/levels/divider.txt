@@ -6,7 +6,11 @@ t  -  a
 -  -  o
 -----m-
 
-SimplePotato
+SimpleLettuce
+SimpleTomato
+Salad
+OnionSalad
+Burger
 
 2 1
 5 1
