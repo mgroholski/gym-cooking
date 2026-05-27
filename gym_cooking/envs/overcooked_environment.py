@@ -629,7 +629,7 @@ class OvercookedEnvironment(gym.Env):
                         dist = min(
                             dist,
                             nav_utils.manhattan_dist(agent.location, a_loc)
-                            + nav_utils.manhattan_dist(a_loc, b_loc),
+                            + (nav_utils.manhattan_dist(a_loc, b_loc) - 1.0),
                         )
 
                 elif isinstance(subtask, recipe.Merge):
@@ -637,13 +637,13 @@ class OvercookedEnvironment(gym.Env):
                         dist = min(
                             dist,
                             nav_utils.manhattan_dist(agent.location, a_loc)
-                            + nav_utils.manhattan_dist(a_loc, b_loc),
+                            + (nav_utils.manhattan_dist(a_loc, b_loc) - 1.0),
                         )
 
                         dist = min(
                             dist,
                             nav_utils.manhattan_dist(agent.location, b_loc)
-                            + nav_utils.manhattan_dist(b_loc, a_loc),
+                            + (nav_utils.manhattan_dist(b_loc, a_loc) - 1.0),
                         )
 
                 else:
@@ -678,7 +678,7 @@ class OvercookedEnvironment(gym.Env):
                         ):
                             dist = min(
                                 dist,
-                                D_b(a) + nav_utils.manhattan_dist(a, b),
+                                D_b(a) + (nav_utils.manhattan_dist(a, b) + 2.0),
                             )
 
                     if start_obj.full_name in self.world.shared_dispensers_dict:
@@ -726,7 +726,7 @@ class OvercookedEnvironment(gym.Env):
                     )
                     and_belief = so1_belief * so2_belief
 
-                    dist = and_belief * (D_b(None)) + (1.0 - and_belief) * (D_max)
+                    dist = and_belief * (2.0 * D_b(None)) + (1.0 - and_belief) * (D_max)
 
                     if (
                         start_obj[0].full_name in self.world.shared_dispensers_dict
@@ -743,7 +743,7 @@ class OvercookedEnvironment(gym.Env):
                                     D_b(a),
                                     D_b(b),
                                 )
-                                + nav_utils.manhattan_dist(a, b),
+                                + (nav_utils.manhattan_dist(a, b) + 2.0),
                             )
 
                     if start_obj[0].full_name in self.world.shared_dispensers_dict:

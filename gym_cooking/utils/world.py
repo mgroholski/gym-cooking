@@ -372,7 +372,7 @@ class World:
             for a, b in product(locs, bound_locs):
                 max_dist = max(manhattan_dist(a, b), max_dist)
 
-            return max_dist
+            return max_dist if loc is not None else max_dist - 1.0
         else:
             raise Exception(f"Invalid _type: {_type}")
 

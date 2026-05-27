@@ -271,21 +271,21 @@ class BeliefState:
 
                 ing_obj = Object(location=(-1, -1), contents=[ing])
                 initial_ingredients_disp_keys.add(get_dispenser_str(ing_obj))
+            else:
+                start_obj, _ = nav_utils.get_subtask_obj(action)
+                if not isinstance(start_obj, (list, tuple)):
+                    start_obj = [start_obj]
 
-            start_obj, _ = nav_utils.get_subtask_obj(action)
-            if not isinstance(start_obj, (list, tuple)):
-                start_obj = [start_obj]
+                for obj in start_obj:
+                    obj_sum_str = get_sum_cnt_str(obj)
+                    self.beliefs[obj.full_name] = self._get_sum_cnt_log_prob(obj)
+                    self.beliefs[obj_sum_str] = []
+                    exclude_set.add(obj.full_name)
+                    exclude_set.add(obj_sum_str)
 
-            for obj in start_obj:
-                obj_sum_str = get_sum_cnt_str(obj)
-                self.beliefs[obj.full_name] = self._get_sum_cnt_log_prob(obj)
-                self.beliefs[obj_sum_str] = []
-                exclude_set.add(obj.full_name)
-                exclude_set.add(obj_sum_str)
-
-                # If the object was taken and used in this path
-                # we infer that the agent no longer has it on their side.
-                self._remove_from_taken(obj)
+                    # If the object was taken and used in this path
+                    # we infer that the agent no longer has it on their side.
+                    self._remove_from_taken(obj)
 
             action_obj = nav_utils.get_subtask_action_obj(action)
             if action_obj is not None:
@@ -336,6 +336,14 @@ class BeliefState:
             exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
             exclude_set = exclude | exclude_set
 
+            evidence_obj_name = evidence_obj.full_name
+            self.beliefs[evidence_obj_name] = self._get_sum_cnt_log_prob(evidence_obj)
+            exclude_set.add(evidence_obj_name)
+
+            sum_cnt_str = get_sum_cnt_str(evidence_obj)
+            self.beliefs[sum_cnt_str] = []
+            exclude_set.add(sum_cnt_str)
+
         if comm_evidence_type == EvidenceType.COMM:
             for evidence_obj in comm_evidence_objs:
                 if evidence_obj is None:
@@ -352,12 +360,15 @@ class BeliefState:
                 exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
                 exclude_set = exclude | exclude_set
 
-                for obj in shared_list:
-                    self._remove_from_taken(obj)
-
                 evidence_obj_name = evidence_obj.full_name
                 self.beliefs[evidence_obj_name] = np.log(1.0)
                 exclude_set.add(evidence_obj_name)
+
+                for obj in shared_list:
+                    self._remove_from_taken(obj)
+                    if obj.full_name in exclude_set:
+                        self.beliefs[obj.full_name] = self.b_tm1.beliefs[obj.full_name]
+                        exclude_set.remove(obj.full_name)
 
         for k, _ in self.beliefs.items():
             if k in exclude_set:

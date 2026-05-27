@@ -82,7 +82,7 @@ def parse_arguments():
     )
 
     # Navigation Planner
-    parser.add_argument("--alpha", type=float, default=0.005, help="Alpha for BRTDP")
+    parser.add_argument("--alpha", type=float, default=0.01, help="Alpha for BRTDP")
     parser.add_argument("--tau", type=int, default=2, help="Normalize v diff")
     parser.add_argument(
         "--cap",
