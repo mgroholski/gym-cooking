@@ -279,7 +279,6 @@ class RealAgent:
             raise Exception(f"{subtask} not in subtask_wrapper_dict")
 
         self.subtask_removed = True
-        self.delegator.planner.reset_value_caches(subtask)
         if other_agent:
             self.belief_state.reset_subtask(subtask)
 

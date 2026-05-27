@@ -74,10 +74,17 @@ class BayesianDelegator(Delegator):
         )
 
         # Compare previously available subtasks with currently available subtasks.
-        is_reseting_priors = not (
-            len(self.probs.enumerate_subtask_allocs())
-            == len(probs.enumerate_subtask_allocs())
+        cur_subtask_allocs_str_set = set(
+            [str(ta) for ta in self.probs.enumerate_subtask_allocs()]
         )
+        new_subtask_allocs_str_set = set(
+            [str(ta) for ta in probs.enumerate_subtask_allocs()]
+        )
+
+        is_reseting_priors = not (
+            cur_subtask_allocs_str_set == new_subtask_allocs_str_set
+        )
+
         return is_reseting_priors
 
     def get_subtask_alloc_probs(self):
@@ -143,7 +150,17 @@ class BayesianDelegator(Delegator):
             )
         ]
 
-        return value_l
+        value_u = self.planner.v_u[
+            (
+                (
+                    self.planner.cur_state.get_repr(),
+                    self.planner.cur_belief.get_repr(),
+                ),
+                (subtask, subtask_agent_names),
+            )
+        ]
+
+        return (value_u + value_l) / 2.0
 
     def prune_subtask_allocs(self, observation, belief, subtask_alloc_probs):
         """Removing subtask allocs from subtask_alloc_probs that are
@@ -208,8 +225,10 @@ class BayesianDelegator(Delegator):
             )
 
             total_weight = 0
+            assigned_agent_cnt = 0
             for t in subtask_alloc:
                 if t.subtask is not None:
+                    assigned_agent_cnt += 1
                     # Calculate prior with this agent's planner.
                     total_weight += 1.0 / (
                         float(
@@ -224,7 +243,7 @@ class BayesianDelegator(Delegator):
                     )
 
             log_p = np.log(
-                len(t) ** 2.0 * total_weight
+                assigned_agent_cnt**2.0 * total_weight
             )  # Weight by number of nonzero subtasks.
 
             for agent_name, comm in obs.comms.items():

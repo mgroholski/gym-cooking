@@ -468,6 +468,10 @@ class E2E_BRTDP:
         self.stop = False
         self.num_explorations = 0
 
+        # Reset value caches.
+        self.v_u = {}
+        self.v_l = {}
+
         # Set start state.
         self.start = copy.copy(env)
         self.start_belief = copy.copy(belief)
@@ -531,15 +535,6 @@ class E2E_BRTDP:
 
         lower = lower * (self.time_cost + self.action_cost)
         upper = upper * (self.time_cost + self.action_cost)
-
-        if (
-            len(self.subtask_agent_names) == 1
-            and self.subtask_agent_names[0] == env_state.sim_agents[0].name
-        ):
-            # Inspired heuristic from the original code to force exploration.
-            # https://github.com/rosewang2008/gym-cooking/blob/74570c1f1a88fabf8fb7d3ddec10aaf2274a2403/gym_cooking/navigation_planner/planners/e2e_brtdp.py#L410
-            upper *= 5
-            lower -= 1.09
 
         # By BRTDP assumption, this should never be negative.
         assert lower > 0, "lower: {}, {}, {}".format(
@@ -726,9 +721,3 @@ class E2E_BRTDP:
             print("chose action:", a)
             print("cost:", self.cost(cur_state, cur_belief, a))
             return a
-
-    def reset_value_caches(self, subtask):
-        for state, (subtask_c, subtask_agent_names_c) in list(self.v_l.keys()):
-            if subtask == subtask_c:
-                del self.v_l[(state, (subtask_c, subtask_agent_names_c))]
-                del self.v_u[(state, (subtask_c, subtask_agent_names_c))]

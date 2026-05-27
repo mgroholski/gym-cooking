@@ -337,25 +337,22 @@ class World:
         x, y = location
         return min(max(x, 0), self.width - 1), min(max(y, 0), self.height - 1)
 
-    def get_loc_bound(self, loc, _type):
+    def get_dist_bound(self, loc, _type):
         if _type == "lower":
-            min_loc = None
-            min_loc_dist = float("inf")
+            if loc is None:
+                return 1.0  # Agent is one away from loc
 
+            min_loc_dist = float("inf")
             bound_locs = self.shared_space_locs
             for a, b in product([loc], bound_locs):
                 # Other agent cannot exist at shared location so we add one.
                 dist = manhattan_dist(a, b) + 1.0
 
-                if dist < min_loc_dist:
-                    min_loc = b
-                    min_loc_dist = dist
+                min_loc_dist = min(min_loc_dist, dist)
 
-            return min_loc
+            return min_loc_dist
 
         elif _type == "upper":
-            dist = 0
-
             bound_locs = [
                 (0, 1),
                 (1, 0),
@@ -367,16 +364,15 @@ class World:
                 (self.width, self.height - 1),
             ]
 
-            max_dist = 0
-            max_loc = (-1, -1)
+            locs = [loc]
+            if loc is None:
+                locs = bound_locs
 
-            for a, b in product([loc], bound_locs):
-                d = manhattan_dist(a, b)
-                if d > max_dist:
-                    max_dist = d
-                    max_loc = b
+            max_dist = 1.0
+            for a, b in product(locs, bound_locs):
+                max_dist = max(manhattan_dist(a, b), max_dist)
 
-            return max_loc
+            return max_dist
         else:
             raise Exception(f"Invalid _type: {_type}")
 
