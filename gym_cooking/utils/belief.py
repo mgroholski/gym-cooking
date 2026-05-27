@@ -336,14 +336,6 @@ class BeliefState:
             exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
             exclude_set = exclude | exclude_set
 
-            evidence_obj_name = evidence_obj.full_name
-            self.beliefs[evidence_obj_name] = self._get_sum_cnt_log_prob(evidence_obj)
-            exclude_set.add(evidence_obj_name)
-
-            sum_cnt_str = get_sum_cnt_str(evidence_obj)
-            self.beliefs[sum_cnt_str] = []
-            exclude_set.add(sum_cnt_str)
-
         if comm_evidence_type == EvidenceType.COMM:
             for evidence_obj in comm_evidence_objs:
                 if evidence_obj is None:
