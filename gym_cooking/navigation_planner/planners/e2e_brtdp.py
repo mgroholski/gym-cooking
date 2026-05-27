@@ -535,7 +535,7 @@ class E2E_BRTDP:
 
         if (
             len(self.subtask_agent_names) == 1
-            and self.subtask_agent_names == env_state.sim_agents[0].name
+            and self.subtask_agent_names[0] == env_state.sim_agents[0].name
         ):
             lower = (lower - 1.09) * (self.time_cost + self.action_cost)
             upper = upper * 5 * (self.time_cost + self.action_cost)
