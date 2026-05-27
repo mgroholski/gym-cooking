@@ -118,25 +118,25 @@ def parse_arguments():
         "--model1",
         type=str,
         default=None,
-        help="Model type for agent 1 (bd, up, dc, fb, or greedy)",
+        help="Model type for agent 1 (bd, or llm)",
     )
     parser.add_argument(
         "--model2",
         type=str,
         default=None,
-        help="Model type for agent 2 (bd, up, dc, fb, or greedy)",
+        help="Model type for agent 2 (bd, or llm)",
     )
     parser.add_argument(
         "--model3",
         type=str,
         default=None,
-        help="Model type for agent 3 (bd, up, dc, fb, or greedy)",
+        help="Model type for agent 3 (bd, or llm)",
     )
     parser.add_argument(
         "--model4",
         type=str,
         default=None,
-        help="Model type for agent 4 (bd, up, dc, fb, or greedy)",
+        help="Model type for agent 4 (bd, or llm)",
     )
 
     return parser.parse_args()

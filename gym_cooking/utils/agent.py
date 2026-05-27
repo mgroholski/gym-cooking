@@ -55,10 +55,7 @@ class RealAgent:
         )
 
         self.model_type = agent_settings(arglist, name)
-        if self.model_type == "up":
-            self.priors = "uniform"
-        else:
-            self.priors = "spatial"
+        self.priors = "spatial"
 
         self.subtask_removed = False
 
@@ -180,14 +177,19 @@ class RealAgent:
             f"{color(self.name, self.color)} has incomplete subtasks: {self.incomplete_subtasks}"
         )
 
-        self.delegator = BayesianDelegator(
-            agent_name=self.name,
-            all_agent_names=env.get_agent_names(),
-            model_type=self.model_type,
-            planner=self.planner,
-            none_action_prob=self.none_action_prob,
-            comm_funcs=self.comm_func,
-        )
+        if self.arglist.model_type == "llm":
+            pass
+        elif self.arglist.model_type == "bd":
+            self.delegator = BayesianDelegator(
+                agent_name=self.name,
+                all_agent_names=env.get_agent_names(),
+                model_type=self.model_type,
+                planner=self.planner,
+                none_action_prob=self.none_action_prob,
+                comm_funcs=self.comm_func,
+            )
+        else:
+            raise ValueError(f"Invalid model type: {self.model_type}")
 
     def reset_subtasks(self):
         """Reset subtasks---relevant for Bayesian Delegation."""
