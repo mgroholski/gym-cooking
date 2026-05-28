@@ -13,6 +13,7 @@ Instructions:
 - Clearly state which subtask is being performed
 - Clearly state which agents are assigned to it
 - Convert the task into human-readable form (e.g., Chop(Tomato) → chopping the tomato)
+- A `None` task means that agent is doing nothing.
 - Do NOT include raw code or Python-like structures
 - Keep the message concise and natural, like a coordination update
 - Frame statements as beliefs (e.g., "I believe...", "It looks like...")

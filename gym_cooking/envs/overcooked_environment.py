@@ -628,22 +628,34 @@ class OvercookedEnvironment(gym.Env):
                     for a_loc, b_loc in product(A_locs, B_locs):
                         dist = min(
                             dist,
-                            nav_utils.manhattan_dist(agent.location, a_loc)
-                            + (nav_utils.manhattan_dist(a_loc, b_loc) - 1.0),
+                            (
+                                nav_utils.manhattan_dist(agent.location, a_loc)
+                                if a_loc != b_loc
+                                else 0.0
+                            )
+                            + (nav_utils.manhattan_dist(a_loc, b_loc)),
                         )
 
                 elif isinstance(subtask, recipe.Merge):
                     for a_loc, b_loc in product(A_locs, B_locs):
                         dist = min(
                             dist,
-                            nav_utils.manhattan_dist(agent.location, a_loc)
-                            + (nav_utils.manhattan_dist(a_loc, b_loc) - 1.0),
+                            (
+                                nav_utils.manhattan_dist(agent.location, a_loc)
+                                if a_loc != b_loc
+                                else 0.0
+                            )
+                            + (nav_utils.manhattan_dist(a_loc, b_loc)),
                         )
 
                         dist = min(
                             dist,
-                            nav_utils.manhattan_dist(agent.location, b_loc)
-                            + (nav_utils.manhattan_dist(b_loc, a_loc) - 1.0),
+                            (
+                                nav_utils.manhattan_dist(agent.location, b_loc)
+                                if a_loc != b_loc
+                                else 0.0
+                            )
+                            + (nav_utils.manhattan_dist(b_loc, a_loc)),
                         )
 
                 else:
@@ -827,6 +839,7 @@ class OvercookedEnvironment(gym.Env):
                                     else 0.0
                                 )
                                 + nav_utils.manhattan_dist(a_loc, b_loc)
+                                + D_b(b_loc)
                                 + (b * D_b(b_loc) + (1.0 - b) * D_max)
                             ),
                         )
@@ -842,6 +855,7 @@ class OvercookedEnvironment(gym.Env):
                             (
                                 nav_utils.manhattan_dist(agent_location, a_loc)
                                 + (b * D_b(a_loc) + (1.0 - b) * D_max)
+                                + D_b(a_loc)
                                 + nav_utils.manhattan_dist(a_loc, b_loc)
                             ),
                         )
@@ -852,7 +866,7 @@ class OvercookedEnvironment(gym.Env):
                         b = belief[action_obj.name]
 
                     for a_loc, b_loc in product(A_locs, open_shared_locs):
-                        # agent_location -> start object -> start object to nearest counter -> bound to action object
+                        # agent_location -> start object -> start object to nearest counter -> agent-2 to nearest counter -> bound to action object
                         dist = min(
                             dist,
                             (
@@ -862,6 +876,7 @@ class OvercookedEnvironment(gym.Env):
                                     else 0.0
                                 )
                                 + nav_utils.manhattan_dist(a_loc, b_loc)
+                                + D_b(b_loc)
                                 + (b * D_b(b_loc) + (1.0 - b) * D_max)
                             ),
                         )
@@ -877,6 +892,7 @@ class OvercookedEnvironment(gym.Env):
                             dist,
                             (
                                 nav_utils.manhattan_dist(agent_location, a_loc)
+                                + D_b(a_loc)
                                 + (b * D_b(a_loc) + (1.0 - b) * D_max)
                                 + nav_utils.manhattan_dist(a_loc, b_loc)
                             ),

@@ -1,6 +1,6 @@
 import copy
 import itertools
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, deque
 from enum import Enum
 from functools import lru_cache
 
@@ -250,6 +250,36 @@ class BeliefState:
                 del self.taken_name_cnt[obj_full_name]
                 del self.taken_name_to_obj[obj_full_name]
 
+    def _update_dependency_from_evidence(self, evidence_obj):
+        queue = deque([evidence_obj.full_name])
+
+        visited = set([evidence_obj.full_name])
+        exclude = set([])
+        while len(queue):
+            obj_full_name = queue.popleft()
+
+            for goal_obj_full_name in self.G_x[obj_full_name]:
+                if (
+                    self.get_prob_by_key(goal_obj_full_name) == 0.0
+                    or goal_obj_full_name in visited
+                ):
+                    continue
+
+                sum_cnt_goal_obj_str = get_sum_cnt_str_from_str(
+                    get_cnt_str_from_str(goal_obj_full_name)
+                )
+                self.beliefs[goal_obj_full_name] = self._get_union_log_prob(
+                    self.beliefs[sum_cnt_goal_obj_str]
+                )
+                self.beliefs[sum_cnt_goal_obj_str] = []
+
+                for start_obj_full_name in self.G_x[goal_obj_full_name]:
+                    if start_obj_full_name not in visited:
+                        queue.append(start_obj_full_name)
+                        visited.add(start_obj_full_name)
+
+        return exclude
+
     def _update_beliefs_from_evidence(self, evidence_obj, obs):
         exclude_set = set()
 
@@ -334,6 +364,9 @@ class BeliefState:
             or evidence_type == EvidenceType.DELIVER
         ):
             exclude = self._update_beliefs_from_evidence(evidence_obj, obs)
+            exclude_set = exclude | exclude_set
+
+            exclude = self._update_dependency_from_evidence(evidence_obj)
             exclude_set = exclude | exclude_set
 
             evidence_obj_name = evidence_obj.full_name

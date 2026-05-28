@@ -150,13 +150,23 @@ class BayesianDelegator(Delegator):
             )
         ]
 
-        bound_v = value_u
+        value_l = self.planner.v_l[
+            (
+                (
+                    self.planner.cur_state.get_repr(),
+                    self.planner.cur_belief.get_repr(),
+                ),
+                (subtask, subtask_agent_names),
+            )
+        ]
+
+        bounded_v = value_u
 
         print(
-            f"[{self.agent_name}.get_bound_for_subtask_alloc] Got {bound_v} for {subtask} with {subtask_agent_names}."
+            f"[{self.agent_name}.get_bound_for_subtask_alloc] Got {bounded_v} for {subtask} with {subtask_agent_names}."
         )
 
-        return bound_v
+        return bounded_v
 
     def prune_subtask_allocs(self, observation, belief, subtask_alloc_probs):
         """Removing subtask allocs from subtask_alloc_probs that are
@@ -238,12 +248,14 @@ class BayesianDelegator(Delegator):
                         )
                     )
 
-            log_p = np.log(
-                assigned_agent_cnt ** (2.0) * total_weight
-            )  # Weight by number of nonzero subtasks.
+            log_p = np.log(total_weight)
 
             for agent_name, comm in obs.comms.items():
-                log_p += self.comm_funcs.get_logits(agent_name, comm, subtask_alloc)
+                logit_p = self.comm_funcs.get_logits(agent_name, comm, subtask_alloc)
+                print(
+                    f'[{self.agent_name}.get_spatial_priors] Task allocation {subtask_alloc} has logit log-probability of {logit_p} for "{comm}".'
+                )
+                log_p += logit_p
 
             some_probs.update(
                 subtask_alloc=subtask_alloc,
@@ -603,6 +615,9 @@ class BayesianDelegator(Delegator):
             if comm_info is not None:
                 for agent_name, (_, _, comm) in comm_info.items():
                     logit_p = self.comm_funcs.get_logits(agent_name, comm, task_alloc)
+                    print(
+                        f'[{self.agent_name}.bayes_update] Task allocation {task_alloc} has logit log-probability of {logit_p} for "{comm}".'
+                    )
                     update += logit_p
             self.probs.update(subtask_alloc=task_alloc, factor=update)
             print("UPDATING: subtask_alloc {} by {}".format(task_alloc, update))

@@ -537,11 +537,12 @@ class E2E_BRTDP:
             len(self.subtask_agent_names) == 1
             and self.subtask_agent_names[0] == env_state.sim_agents[0].name
         ):
-            lower = (lower - 1.09) * (self.time_cost + self.action_cost)
-            upper = upper * 5 * (self.time_cost + self.action_cost)
-        else:
-            lower = lower * (self.time_cost + self.action_cost)
-            upper = upper * (self.time_cost + self.action_cost)
+            # We artificially change these values such that the planner will still plan
+            # in deterministic environments.
+            lower -= 0.5
+
+        lower = lower * (self.time_cost + self.action_cost)
+        upper = upper * (self.time_cost + self.action_cost)
 
         # By BRTDP assumption, this should never be negative.
         assert lower > 0, "lower: {}, {}, {}".format(
