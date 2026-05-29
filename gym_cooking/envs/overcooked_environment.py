@@ -838,7 +838,7 @@ class OvercookedEnvironment(gym.Env):
                                     if a_loc != b_loc
                                     else 0.0
                                 )
-                                + nav_utils.manhattan_dist(a_loc, b_loc)
+                                + self.world.get_obj_dist_to_helper(a_loc, b_loc)
                                 + D_b(b_loc)
                                 + (b * D_b(b_loc) + (1.0 - b) * D_max)
                             ),
@@ -875,7 +875,7 @@ class OvercookedEnvironment(gym.Env):
                                     if a_loc != b_loc
                                     else 0.0
                                 )
-                                + nav_utils.manhattan_dist(a_loc, b_loc)
+                                + self.world.get_obj_dist_to_helper(a_loc, b_loc)
                                 + D_b(b_loc)
                                 + (b * D_b(b_loc) + (1.0 - b) * D_max)
                             ),

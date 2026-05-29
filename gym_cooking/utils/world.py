@@ -337,6 +337,16 @@ class World:
         x, y = location
         return min(max(x, 0), self.width - 1), min(max(y, 0), self.height - 1)
 
+    def get_obj_dist_to_helper(self, obj_loc, gs_loc):
+        if obj_loc == gs_loc:
+            return 0.0
+
+        gs = self.get_gridsquare_at(gs_loc)
+        if gs.holding is not None:
+            return self.perimeter + 1
+
+        return nav_utils.manhattan_dist(obj_loc, gs_loc)
+
     def get_dist_bound(self, loc, _type):
         if _type == "lower":
             if loc is None:
