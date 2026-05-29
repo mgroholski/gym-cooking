@@ -413,9 +413,6 @@ class BeliefState:
             if k in exclude_set:
                 continue
 
-            if verbose:
-                print(f"[Agent-{self.cur_agent} Belief Update] Updating {k}...")
-
             if k in self.ing_key_set or k in self.initial_ing_key_set:
                 if k in self.initial_ing_key_set:
                     created_log_prob = self._get_log_prob_by_key(
@@ -457,6 +454,11 @@ class BeliefState:
                     k[6:-2]
                 ) + self._get_log_prob_by_key(k[4:-1])
                 self.beliefs[k].append(timestep_prob)
+
+            if verbose:
+                print(
+                    f"[Agent-{self.cur_agent} Belief Update] Updated {k} from {self.b_tm1[k]} to {self.beliefs[k]}."
+                )
 
         return
 
