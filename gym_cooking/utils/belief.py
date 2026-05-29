@@ -293,6 +293,10 @@ class BeliefState:
             evidence_obj, obs.recipes
         )
 
+        print(
+            f"[{obs.sim_agents[0].name}-_update_beliefs_from_evidence] Got {[str(action) for action in shortest_action_path]} as shortest_action_path."
+        )
+
         initial_ingredients_disp_keys = set()
         action_objs_names = set()
 
