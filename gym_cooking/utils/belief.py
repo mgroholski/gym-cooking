@@ -96,6 +96,10 @@ class BeliefState:
 
         self.name_to_obj = dict()
 
+        # s_j_area = ((obs.world.height - 2) * (obs.world.width - 3)) / 2.0
+        # self.s_j_area_log_prob = np.log(1.0 / (100 * s_j_area))
+        self.s_j_area_log_prob = np.log(1.0)
+
         self.G_x = {}
 
         self.cur_agent = obs.sim_agents[0]
@@ -116,7 +120,9 @@ class BeliefState:
                         self._set_start_obj_beliefs(start_obj, obs)
                         if start_obj.full_name not in self.G_x:
                             self.G_x[start_obj.full_name] = set()
-                        self.G_x[start_obj.full_name].add(goal_obj.full_name)
+
+                        if start_obj.full_name != goal_obj.full_name:
+                            self.G_x[start_obj.full_name].add(goal_obj.full_name)
                         self.name_to_obj[start_obj.full_name] = start_obj
 
                     self.beliefs[goal_obj.full_name] = init_ingredient_belief(
@@ -480,6 +486,7 @@ class BeliefState:
                 if (
                     self.cur_agent not in t.subtask_agent_names
                     and t.subtask is not None
+                    and not isinstance(t.subtask, recipe_utils.Deliver)
                 ):
                     # We use only other the agent because this is over S^j.
                     item_prob = []
@@ -506,7 +513,9 @@ class BeliefState:
                         log_a = item_prob[0]
                         log_b = item_prob[1]
                         log_ta = np.log(ta_probs.get(ta))
-                        p = np.logaddexp(p, log_a + log_b + log_ta)
+                        p = np.logaddexp(
+                            p, log_a + log_b + log_ta + self.s_j_area_log_prob
+                        )
 
         return min(p, 0.0)
 

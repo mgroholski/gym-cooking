@@ -248,7 +248,7 @@ class BayesianDelegator(Delegator):
                         )
                     )
 
-            log_p = np.log(total_weight)
+            log_p = np.log(len(t) ** 2.0 * total_weight)
 
             for agent_name, comm in obs.comms.items():
                 logit_p = self.comm_funcs.get_logits(agent_name, comm, subtask_alloc)
